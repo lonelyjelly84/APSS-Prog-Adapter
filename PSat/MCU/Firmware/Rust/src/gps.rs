@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
-use core::num::{ParseFloatError, ParseIntError};
+use core::{fmt::Debug, num::ParseIntError};
 
-use arrayvec::ArrayVec;
+use arrayvec::ArrayString;
 use msp430fr2x5x_hal::{
     clock::Smclk, 
-    serial::{BitCount, BitOrder, Loopback, Parity, SerialConfig, StopBits}};
+    serial::{BitCount, BitOrder, Loopback, Parity, RecvError, SerialConfig, StopBits}};
 use embedded_hal::serial::Read;
+use ufmt::{derive::uDebug, uDisplay, uwrite};
 use crate::pin_mappings::{GpsEusci, GpsRx, GpsRxPin, GpsTx, GpsTxPin};
 
 const NMEA_MESSAGE_MAX_LEN: usize = 82;
@@ -29,156 +30,252 @@ impl Gps {
             .split(tx_pin, rx_pin);
         Self {tx, rx}
     } 
-    /// Get a GPS GGA packet as a `&[u8]`. Useful if you're just sending over the radio.
-    pub fn get_raw_gga_packet<'a>(&mut self, buf: &'a mut [AsciiChar; NMEA_MESSAGE_MAX_LEN]) -> &'a [AsciiChar] {
+
+    /// Get the next GPS packet as an ArrayString.
+    pub fn get_nmea_string_message_blocking(&mut self) -> Result<ArrayString<NMEA_MESSAGE_MAX_LEN>, RecvError> {
+        let mut msg = ArrayString::new();
+        // Wait until start of a message. Messages begin with '$'
+        while nb::block!(self.rx.read())? != b'$' {}
+        msg.push('$');
+
+        // Push chars until '\n'
         loop {
-            // Wait until start of a message. Messages begin with '$'
-            loop {
-                if let Ok(b'$') = self.rx.read() { break }
-            }
-            buf[0] = b'$';
+            let chr = nb::block!(self.rx.read())?;
+            msg.push(chr as char);
+            if chr == b'\n' { break; }
+        }
 
-            // Store message ID
-            for i in 1..=5 {
-                buf[i] = self.rx.read().unwrap_or_else(|_| panic!("Err in serial read"));
-            }
-
-            // Check if the message is a GGA-type message. If not, wait for the start of the next message.
-            if buf[3..=5] != *b"GGA" { continue; }
-
-            let mut i = 0;
-            for (idx, chr) in buf.iter_mut().enumerate().skip(6) {
-                i = idx;
-                *chr = match self.rx.read() {
-                    Ok(b'\n') => break,
-                    Ok(c) => c,
-                    Err(_) => panic!("Err in serial read"),
-                }
-            }
-            buf[i] = b'\n';
-            return &buf[0..=i];
+        Ok(msg)
+    }
+    /// Get a GPS GGA packet as an ArrayString. Useful if you're just sending over the radio or logging to an SD card.
+    pub fn get_gga_string_message_blocking(&mut self) -> Result<ArrayString<NMEA_MESSAGE_MAX_LEN>, RecvError> {
+        loop {
+            let msg = self.get_nmea_string_message_blocking()?;
+            if &msg[3..6] == "GGA" { return Ok(msg) }
         }
     }
-    /// Get a GPS GGA packet as a struct with native fields. Useful for interpreting.
-    pub fn try_get_packet_as_struct(&mut self) -> Result<GpsGgaPacket, IntOrFloatParseError> {
-        let mut buf = [b'\0'; NMEA_MESSAGE_MAX_LEN];
-        let str = self.get_raw_gga_packet(&mut buf);
-        AsciiGpsGgaPacket::try_from(str).unwrap().try_into()
+    /// Get a GPS GGA packet as a struct. Useful for on-device computation.
+    pub fn get_gga_message_blocking(&mut self) -> Result<GgaMessage, GgaParseError> {
+        let msg = self.get_gga_string_message_blocking().map_err(GgaParseError::SerialError)?;
+        crate::println!("{}", msg.as_str());
+        GgaMessage::try_from(msg)
     }
 }
 
-type AsciiChar = u8;
-
-// A GGA packet in intermediate ASCII form.
-#[derive(Default)]
-pub struct AsciiGpsGgaPacket {
-    utc_time:   [AsciiChar; 10],
-    latitude:   [AsciiChar; 9],
-    north_south_indicator: AsciiChar,
-    longitude:  [AsciiChar; 10],
-    east_west_indicator: AsciiChar,
-    position_fix_indicator: AsciiChar,
-    num_satellites: ArrayVec<AsciiChar, 2>,
-    mean_sea_level_altitude: ArrayVec<AsciiChar, 7>,
-    altitude_units: AsciiChar,
+/// A degrees value, stored as a decimal fraction.
+pub struct Degrees {
+    pub degrees: i16,
+    pub frac: u32,
 }
+impl uDisplay for Degrees {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: ufmt::uWrite + ?Sized {
+        const MAX_LEN: usize = u32::MAX.ilog10() as usize;
+        let mut padding: ArrayString<MAX_LEN> = ArrayString::new();
+        for _ in 0..MAX_LEN-self.frac.ilog10() as usize { padding.push('0'); }
+        uwrite!(f, "{}.{}{}°", self.degrees, padding.as_str(), self.frac)
+    }
+}
+impl TryFrom<(&str, &str)> for Degrees {
+    type Error = LatLongParseError;
 
-impl TryFrom<&[AsciiChar]> for AsciiGpsGgaPacket {
-    type Error = GgaParseError;
-
-    fn try_from(message: &[AsciiChar]) -> Result<Self, Self::Error> {
-        let sections = message.split(|&c| c == b',');
-        if sections.clone().count() != 15 { return Err(GgaParseError::WrongSectionCount) }
-        let mut packet = Self::default();
-        for (i, section) in sections.enumerate() {
-            match i {
-                1  => if section.len() != 10 {return Err(GgaParseError::WrongSectionLength)} else { packet.utc_time.clone_from_slice(section) },
-                2  => if section.len() != 9  {return Err(GgaParseError::WrongSectionLength)} else { packet.latitude.clone_from_slice(section) },
-                3  => packet.north_south_indicator = section[0],
-                4  => if section.len() != 10 {return Err(GgaParseError::WrongSectionLength)} else { packet.longitude.clone_from_slice(section) },
-                5  => packet.east_west_indicator = section[0],
-                6  => packet.position_fix_indicator = section[0],
-                7  => packet.num_satellites.try_extend_from_slice(section).map_err(|_| GgaParseError::WrongSectionLength)?,
-                9  => packet.mean_sea_level_altitude.try_extend_from_slice(section).map_err(|_| GgaParseError::WrongSectionLength)?,
-                10 => packet.altitude_units = section[0],
-                _ => continue,
-            };
-        } 
-        Ok(packet)
+    fn try_from(value: (&str, &str)) -> Result<Self, Self::Error> {
+        let (degrees_str, compass_direction) = value;
+        crate::println!("{}, {}", degrees_str, compass_direction);
+        if degrees_str.is_empty() || compass_direction.is_empty() {
+            return Err(LatLongParseError::NoData);
+        }
+        let degrees: i16;
+        let minutes: u8;
+        let minutes_frac: u8;
+        let (first_half, _) = degrees_str.split_once('.').unwrap();
+    
+        if first_half.len() == 4 { // ddmm
+            degrees = degrees_str[0..2].parse().unwrap();
+            minutes = degrees_str[2..4].parse::<u8>().unwrap() / 60;
+            minutes_frac = degrees_str[4..].parse::<u8>().unwrap() / 60;
+        } else { // dddmm
+            degrees = degrees_str[0..3].parse().unwrap();
+            minutes = degrees_str[3..5].parse::<u8>().unwrap() / 60;
+            minutes_frac = degrees_str[5..].parse::<u8>().unwrap() / 60;
+        }
+    
+        let frac: u32 = (minutes as u32*100_000 + minutes_frac as u32) / 60;
+    
+        match compass_direction {
+            "N" | "E" => Ok(Degrees{degrees, frac}),
+            "S" | "W" => Ok(Degrees{degrees: -degrees, frac}),
+            _ => Err(LatLongParseError::InvalidCompassDirection)
+        }
     }
 }
 #[derive(Debug)]
-pub enum GgaParseError {
-    WrongSectionCount,
-    InvalidChecksum,
-    WrongSectionLength,
+pub enum LatLongParseError {
+    NoData,
+    InvalidCompassDirection,
 }
 
 // A GGA packet in native form. Useful for interpreting the results on-device.
-pub struct GpsGgaPacket {
-    utc_time: UtcTime,
-    latitude: f32,
-    north_south_indicator: AsciiChar,
-    longitude: f32,
-    east_west_indicator: AsciiChar,
-    position_fix_indicator: PositionFixIndicator,
-    num_satellites: u8,
-    mean_sea_level_altitude: f32,
+pub struct GgaMessage {
+    pub utc_time: UtcTime,
+    pub latitude: Degrees,
+    pub longitude: Degrees,
+    pub fix_type: GpsFixType,
+    pub num_satellites: u8,
+    pub altitude_msl: Altitude,
 }
-impl TryFrom<AsciiGpsGgaPacket> for GpsGgaPacket {
-    type Error = IntOrFloatParseError;
-    fn try_from(packet: AsciiGpsGgaPacket) -> Result<Self, Self::Error> {
-        let utc_time = UtcTime {
-            hours:   bytes_to_u8(&packet.utc_time[0..2])?, 
-            minutes: bytes_to_u8(&packet.utc_time[2..4])?, 
-            seconds: bytes_to_u8(&packet.utc_time[4..6])?, 
-            // Full stop at packet.utc_time[6]
-            millis:  bytes_to_u16(&packet.utc_time[7..])?,
-        };
+impl TryFrom<ArrayString<NMEA_MESSAGE_MAX_LEN>> for GgaMessage {
+    type Error = GgaParseError;
 
-        let latitude: f32  = bytes_to_f32(&packet.latitude)?;
-        let longitude: f32 = bytes_to_f32(&packet.longitude)?;
-        let mean_sea_level_altitude: f32 = bytes_to_f32(&packet.mean_sea_level_altitude)?;
-        let position_fix_indicator: PositionFixIndicator = match packet.position_fix_indicator {
-            b'0' => PositionFixIndicator::None,
-            b'1' => PositionFixIndicator::Gps,
-            b'2' => PositionFixIndicator::DifferentialGps,
-            _ => unreachable!(), // Should be unreachable
-        };
-        let north_south_indicator = packet.north_south_indicator;
-        let east_west_indicator = packet.east_west_indicator;
-        let num_satellites: u8 = bytes_to_u8(&packet.num_satellites)?;
+    fn try_from(msg: ArrayString<NMEA_MESSAGE_MAX_LEN>) -> Result<Self, Self::Error> {
+        let mut sections = msg.split(',');
+        let num_sections = sections.clone().count();
+        if num_sections != 15 { return Err(GgaParseError::WrongSectionCount) } 
+        let fix_type = GpsFixType::try_from(sections.clone().nth(6).unwrap()).map_err(|_| GgaParseError::InvalidGpsFixType)?;
+        if fix_type == GpsFixType::None { return Err(GgaParseError::NoFix) }
 
-        Ok( GpsGgaPacket{utc_time, latitude, north_south_indicator, longitude, 
-                east_west_indicator, position_fix_indicator, num_satellites, mean_sea_level_altitude} )
+        Ok( GgaMessage { 
+            utc_time: UtcTime::try_from(sections.nth(1).unwrap())                               .unwrap(),//.map_err(GgaParseError::UtcParseError)?, 
+            latitude: Degrees::try_from((sections.nth(2).unwrap(), sections.nth(3).unwrap()))   .unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
+            longitude: Degrees::try_from((sections.nth(4).unwrap(), sections.nth(5).unwrap()))  .unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
+            fix_type: GpsFixType::try_from(sections.nth(6).unwrap())                            .unwrap(),//.map_err(|_| GgaParseError::InvalidGpsFixType)?, 
+            num_satellites: sections.nth(7).unwrap().parse()                                    .unwrap(),//.map_err(GgaParseError::InvalidSatelliteNumber)?, 
+            altitude_msl: Altitude::try_from(sections.nth(9).unwrap())                          .unwrap(),//.map_err(GgaParseError::AltitudeParseError)?, 
+        })
     }
 }
 
-fn bytes_to_u8(bytes: &[u8]) -> Result<u8, IntOrFloatParseError> {
-    core::str::from_utf8(bytes).unwrap().parse().map_err(IntOrFloatParseError::IntError)
+pub enum GgaParseError {
+    NoFix,
+    SerialError(RecvError),
+    WrongSectionCount,
+    LatLongParseError(LatLongParseError),
+    InvalidGpsFixType,
+    InvalidSatelliteNumber(ParseIntError),
+    UtcParseError(UtcError),
+    AltitudeParseError(ParseIntError),
 }
-fn bytes_to_u16(bytes: &[u8]) -> Result<u16, IntOrFloatParseError> {
-    core::str::from_utf8(bytes).unwrap().parse().map_err(IntOrFloatParseError::IntError)
-}
-fn bytes_to_f32(bytes: &[u8]) -> Result<f32, IntOrFloatParseError> {
-    core::str::from_utf8(bytes).unwrap().parse().map_err(IntOrFloatParseError::FloatError)
+impl Debug for GgaParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::SerialError(arg0) => {
+                let str = match arg0 {
+                    RecvError::Framing => "Framing",
+                    RecvError::Parity => "Parity",
+                    RecvError::Overrun(_) => "Overrun",
+                };
+                f.debug_tuple("SerialError").field(&str).finish()
+            }
+            e => write!(f, "{:?}", e),
+        }
+    }
 }
 
+/// A UTC timestamp
+pub struct UtcTime {
+    pub hours: u8,
+    pub minutes: u8,
+    pub seconds: u8,
+    pub millis: u16, 
+}
+impl uDisplay for UtcTime {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: ufmt::uWrite + ?Sized {
+        for time in [self.hours, self.minutes] {
+            match time {
+                0..10 => uwrite!(f, "0{}:", time)?,
+                10.. =>  uwrite!(f,  "{}:", time)?,
+            };
+        }
+
+        match self.seconds {
+            0..10 =>  uwrite!(f, "0{}.", self.seconds)?,
+            10..  =>  uwrite!(f,  "{}.", self.seconds)?,
+        };
+
+        match self.millis {
+            0..10   => uwrite!(f, "00{} UTC", self.millis)?,
+            10..100 => uwrite!(f,  "0{} UTC", self.millis)?,
+            100..   => uwrite!(f,   "{} UTC", self.millis)?,
+        };
+
+        Ok(())
+    }
+}
+impl TryFrom<&str> for UtcTime {
+    type Error = UtcError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        crate::println!("{}", value);
+        if value.len() < 6 {
+            return Err(UtcError::StrTooShort)
+        }
+        Ok(UtcTime { 
+            hours: value[0..2].parse().map_err(UtcError::ParseError)?, 
+            minutes: value[2..4].parse().map_err(UtcError::ParseError)?, 
+            seconds: value[4..6].parse().map_err(UtcError::ParseError)?, 
+            millis: value.get(7..).unwrap_or("0").parse().map_err(UtcError::ParseError)? })
+    }
+}
 #[derive(Debug)]
-pub enum IntOrFloatParseError {
-    IntError(ParseIntError),
-    FloatError(ParseFloatError),
+pub enum UtcError {
+    StrTooShort,
+    ParseError(ParseIntError),
 }
 
-struct UtcTime {
-    hours: u8,
-    minutes: u8,
-    seconds: u8,
-    millis: u16, 
-}
-
-enum PositionFixIndicator {
+#[derive(Debug, uDebug, PartialEq, Eq)]
+pub enum GpsFixType {
     None = 0,
     Gps = 1,
     DifferentialGps = 2,
+}
+impl TryFrom<&str> for GpsFixType{
+    type Error = ();
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        crate::println!("{}", value);
+        Ok(match value {
+            "0" => GpsFixType::None,
+            "1" => GpsFixType::Gps,
+            "2" => GpsFixType::DifferentialGps,
+            _ => return Err(()), // should be unreachable
+        })
+    }
+}
+
+pub struct Altitude(u32); // Stored as cm internally. Good up to 65km high.
+impl Altitude {
+    pub fn metres(&self) -> u16 {
+        (self.0 / 100) as u16
+    }
+    pub fn centimetres(&self) -> u32 {
+        self.0
+    }
+}
+impl TryFrom<&str> for Altitude {
+    type Error = ParseIntError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        crate::println!("{}", value);
+        match value.split_once('.') {
+            Some((metres, frac)) => {
+                Ok(Altitude(metres.parse::<u32>()? * 100 + frac[..2].parse::<u32>()?)) // Fractional part at most 2dp.
+            },
+            None => {
+                Ok(Altitude(value.parse::<u32>()? * 100))
+            },
+        }
+    }
+}
+impl uDisplay for Altitude {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: ufmt::uWrite + ?Sized { 
+        let frac = self.centimetres() % 100;
+        if frac < 10 {  uwrite!(f, "{}.0{}m", self.metres(), frac) }
+        else {          uwrite!(f, "{}.{}m",  self.metres(), frac) }
+        
+    }
 }

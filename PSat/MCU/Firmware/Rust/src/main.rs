@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 
+use gps::GgaParseError;
 // External imports
 use msp430_rt::entry;
 use msp430fr2x5x_hal::hal::blocking::delay::DelayMs;
@@ -18,11 +19,24 @@ use board::Board;
 
 #[entry]
 fn main() -> ! {
-    let board = board::configure(); // Collect board elements, configure printing, etc.
+    let mut board = board::configure(); // Collect board elements, configure printing, etc.
 
     // Printing can be expensive in terms of executable size. We only have 32kB on the MSP430, use it sparingly.
     // Prints over eUSCI A0. See board::configure() for details.
     println!("Hello world!");
+
+    loop {
+        match board.gps.get_gga_message_blocking() {
+            Ok(results) => {
+                println!("Time: {}, Lat: {}, Long: {}, Fix type: {:?}, Num sats: {}, Altitude: {}", 
+                    results.utc_time, results.latitude, results.longitude, results.fix_type, results.num_satellites, results.altitude_msl
+                );
+            },
+            Err(GgaParseError::NoFix) => println!("No Fix..."),
+            Err(GgaParseError::SerialError(_)) => (),
+            Err(e) => panic!("{:?}", e)
+        }
+    }
 
     idle_loop(board);
 }
