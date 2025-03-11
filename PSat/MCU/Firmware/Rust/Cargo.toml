@@ -19,6 +19,8 @@ embedded-lora-rfm95 = { path = "./embedded-lora-rust/rfm95" } # For now we use a
 
 arrayvec = {version = "0.7", default-features = false }
 
+fixed = "1.29"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

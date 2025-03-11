@@ -2,7 +2,8 @@
 
 use core::{fmt::Debug, num::ParseIntError};
 
-use arrayvec::ArrayString;
+use arrayvec::{ArrayString, ArrayVec};
+use fixed::{types::extra::{U10, U24}, FixedI32};
 use msp430fr2x5x_hal::{
     clock::Smclk, 
     serial::{BitCount, BitOrder, Loopback, Parity, RecvError, SerialConfig, StopBits}};
@@ -62,61 +63,7 @@ impl Gps {
     }
 }
 
-/// A degrees value, stored as a decimal fraction.
-pub struct Degrees {
-    pub degrees: i16,
-    pub frac: u32,
-}
-impl uDisplay for Degrees {
-    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
-    where
-        W: ufmt::uWrite + ?Sized {
-        const MAX_LEN: usize = u32::MAX.ilog10() as usize;
-        let mut padding: ArrayString<MAX_LEN> = ArrayString::new();
-        for _ in 0..MAX_LEN-self.frac.ilog10() as usize { padding.push('0'); }
-        uwrite!(f, "{}.{}{}°", self.degrees, padding.as_str(), self.frac)
-    }
-}
-impl TryFrom<(&str, &str)> for Degrees {
-    type Error = LatLongParseError;
-
-    fn try_from(value: (&str, &str)) -> Result<Self, Self::Error> {
-        let (degrees_str, compass_direction) = value;
-        crate::println!("{}, {}", degrees_str, compass_direction);
-        if degrees_str.is_empty() || compass_direction.is_empty() {
-            return Err(LatLongParseError::NoData);
-        }
-        let degrees: i16;
-        let minutes: u8;
-        let minutes_frac: u8;
-        let (first_half, _) = degrees_str.split_once('.').unwrap();
-    
-        if first_half.len() == 4 { // ddmm
-            degrees = degrees_str[0..2].parse().unwrap();
-            minutes = degrees_str[2..4].parse::<u8>().unwrap() / 60;
-            minutes_frac = degrees_str[4..].parse::<u8>().unwrap() / 60;
-        } else { // dddmm
-            degrees = degrees_str[0..3].parse().unwrap();
-            minutes = degrees_str[3..5].parse::<u8>().unwrap() / 60;
-            minutes_frac = degrees_str[5..].parse::<u8>().unwrap() / 60;
-        }
-    
-        let frac: u32 = (minutes as u32*100_000 + minutes_frac as u32) / 60;
-    
-        match compass_direction {
-            "N" | "E" => Ok(Degrees{degrees, frac}),
-            "S" | "W" => Ok(Degrees{degrees: -degrees, frac}),
-            _ => Err(LatLongParseError::InvalidCompassDirection)
-        }
-    }
-}
-#[derive(Debug)]
-pub enum LatLongParseError {
-    NoData,
-    InvalidCompassDirection,
-}
-
-// A GGA packet in native form. Useful for interpreting the results on-device.
+// A GGA packet in struct form. Useful for interpreting the results on-device.
 pub struct GgaMessage {
     pub utc_time: UtcTime,
     pub latitude: Degrees,
@@ -129,19 +76,19 @@ impl TryFrom<ArrayString<NMEA_MESSAGE_MAX_LEN>> for GgaMessage {
     type Error = GgaParseError;
 
     fn try_from(msg: ArrayString<NMEA_MESSAGE_MAX_LEN>) -> Result<Self, Self::Error> {
-        let mut sections = msg.split(',');
-        let num_sections = sections.clone().count();
-        if num_sections != 15 { return Err(GgaParseError::WrongSectionCount) } 
-        let fix_type = GpsFixType::try_from(sections.clone().nth(6).unwrap()).map_err(|_| GgaParseError::InvalidGpsFixType)?;
+        let sections: ArrayVec<&str, 15> = msg.split(',').take(15).collect();
+        if sections.len() != 15 { return Err(GgaParseError::WrongSectionCount) }
+
+        let fix_type = GpsFixType::try_from(sections[6]).map_err(|_| GgaParseError::InvalidGpsFixType)?;
         if fix_type == GpsFixType::None { return Err(GgaParseError::NoFix) }
 
         Ok( GgaMessage { 
-            utc_time: UtcTime::try_from(sections.nth(1).unwrap())                               .unwrap(),//.map_err(GgaParseError::UtcParseError)?, 
-            latitude: Degrees::try_from((sections.nth(2).unwrap(), sections.nth(3).unwrap()))   .unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
-            longitude: Degrees::try_from((sections.nth(4).unwrap(), sections.nth(5).unwrap()))  .unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
-            fix_type: GpsFixType::try_from(sections.nth(6).unwrap())                            .unwrap(),//.map_err(|_| GgaParseError::InvalidGpsFixType)?, 
-            num_satellites: sections.nth(7).unwrap().parse()                                    .unwrap(),//.map_err(GgaParseError::InvalidSatelliteNumber)?, 
-            altitude_msl: Altitude::try_from(sections.nth(9).unwrap())                          .unwrap(),//.map_err(GgaParseError::AltitudeParseError)?, 
+            utc_time: UtcTime::try_from(sections[1])                .unwrap(),//.map_err(GgaParseError::UtcParseError)?, 
+            latitude: Degrees::try_from((sections[2], sections[3])) .unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
+            longitude: Degrees::try_from((sections[4], sections[5])).unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
+            num_satellites: sections[7].parse()                     .unwrap(),//.map_err(GgaParseError::InvalidSatelliteNumber)?, 
+            altitude_msl: Altitude::try_from(sections[9])           .unwrap(),//.map_err(GgaParseError::AltitudeParseError)?, 
+            fix_type,
         })
     }
 }
@@ -225,6 +172,77 @@ pub enum UtcError {
     ParseError(ParseIntError),
 }
 
+/// A degrees value, stored as a decimal fraction.
+pub struct Degrees(pub FixedI32<U24>);
+impl uDisplay for Degrees {
+    fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
+    where
+        W: ufmt::uWrite + ?Sized {
+        const FRAC_BITS: u32 = 24;
+        const FRAC_MASK: u32 = (1 << FRAC_BITS) - 1;
+        const MAX_PRECISION: u32 = 6;
+
+        let mut fxd = self.0;
+            
+        let sign = if fxd < 0 {'-'} else {'+'};
+
+        // Fractional bits are always positive, even for negative numbers. Make the number positive so they make sense
+        if sign == '-' {fxd *= -1;} 
+
+        let whole: i32 = fxd.to_num();
+        uwrite!(f, "{}{}", sign, whole)?;
+
+        let mut frac: u32 = (fxd.frac().to_bits() as u32) & FRAC_MASK;
+
+        if frac != 0 { uwrite!(f, ".")?; }
+
+        let mut precision = 0;
+        while frac != 0 && precision < MAX_PRECISION {
+            frac *= 10;
+            let digit = frac >> FRAC_BITS;
+            uwrite!(f, "{}", digit)?;
+            frac &= FRAC_MASK;
+            precision += 1;
+        }
+        uwrite!(f, "°")
+    }
+}
+impl TryFrom<(&str, &str)> for Degrees {
+    type Error = LatLongParseError;
+
+    fn try_from(value: (&str, &str)) -> Result<Self, Self::Error> {
+        let (degrees_str, compass_direction) = value;
+        crate::println!("{}, {}", degrees_str, compass_direction);
+        if degrees_str.is_empty() || compass_direction.is_empty() {
+            return Err(LatLongParseError::NoData);
+        }
+        let degrees: i16; 
+        let minutes: FixedI32::<U24>;
+        let (first_half, _) = degrees_str.split_once('.').unwrap();
+    
+        if first_half.len() == 4 { // ddmm
+            degrees = degrees_str[0..2].parse().unwrap();
+            minutes = degrees_str[2.. ].parse().unwrap();
+        } else { // dddmm
+            degrees = degrees_str[0..3].parse().unwrap();
+            minutes = degrees_str[3.. ].parse().unwrap();
+        }
+    
+        let fxd = FixedI32::<U24>::from_num(degrees) + minutes/60;
+    
+        match compass_direction {
+            "N" | "E" => Ok(Degrees(fxd)),
+            "S" | "W" => Ok(Degrees(-fxd)),
+            _ => Err(LatLongParseError::InvalidCompassDirection)
+        }
+    }
+}
+#[derive(Debug)]
+pub enum LatLongParseError {
+    NoData,
+    InvalidCompassDirection,
+}
+
 #[derive(Debug, uDebug, PartialEq, Eq)]
 pub enum GpsFixType {
     None = 0,
@@ -245,37 +263,45 @@ impl TryFrom<&str> for GpsFixType{
     }
 }
 
-pub struct Altitude(u32); // Stored as cm internally. Good up to 65km high.
-impl Altitude {
-    pub fn metres(&self) -> u16 {
-        (self.0 / 100) as u16
-    }
-    pub fn centimetres(&self) -> u32 {
-        self.0
-    }
-}
+pub struct Altitude(pub FixedI32<U10>);
 impl TryFrom<&str> for Altitude {
-    type Error = ParseIntError;
+    type Error = fixed::ParseFixedError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         crate::println!("{}", value);
-        match value.split_once('.') {
-            Some((metres, frac)) => {
-                Ok(Altitude(metres.parse::<u32>()? * 100 + frac[..2].parse::<u32>()?)) // Fractional part at most 2dp.
-            },
-            None => {
-                Ok(Altitude(value.parse::<u32>()? * 100))
-            },
-        }
+        Ok(Altitude(value.parse()?))
     }
 }
 impl uDisplay for Altitude {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
     where
         W: ufmt::uWrite + ?Sized { 
-        let frac = self.centimetres() % 100;
-        if frac < 10 {  uwrite!(f, "{}.0{}m", self.metres(), frac) }
-        else {          uwrite!(f, "{}.{}m",  self.metres(), frac) }
-        
+        const FRAC_BITS: u32 = 10;
+        const FRAC_MASK: u32 = (1 << FRAC_BITS) - 1;
+        const MAX_PRECISION: u32 = 3;
+
+        let mut fxd = self.0;
+            
+        let sign = if fxd < 0 {'-'} else {'+'};
+
+        // Fractional bits are always positive, even for negative numbers. Make the number positive so they make sense
+        if sign == '-' {fxd *= -1;} 
+
+        let whole: i32 = fxd.to_num();
+        uwrite!(f, "{}{}", sign, whole)?;
+
+        let mut frac: u32 = (fxd.frac().to_bits() as u32) & FRAC_MASK;
+
+        if frac != 0 { uwrite!(f, ".")?; }
+
+        let mut precision = 0;
+        while frac != 0 && precision < MAX_PRECISION {
+            frac *= 10;
+            let digit = frac >> FRAC_BITS;
+            uwrite!(f, "{}", digit)?;
+            frac &= FRAC_MASK;
+            precision += 1;
+        }
+        uwrite!(f, "m")
     }
 }
