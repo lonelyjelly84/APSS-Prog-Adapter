@@ -59,8 +59,60 @@ impl Gps {
     pub fn get_gga_message_blocking(&mut self) -> Result<GgaMessage, GgaParseError> {
         let msg = self.get_gga_string_message_blocking().map_err(GgaParseError::SerialError)?;
         crate::println!("{}", msg.as_str());
-        GgaMessage::try_from(msg)
+        GgaMessage::try_from(&msg)
     }
+
+    // TODO: Test
+    /// Slowly builds up a message byte by byte by checking the serial buffer. Call this function repeatedly until it returns `Ok`.
+    /// 
+    /// This function must be called sufficiently frequently to ensure that the serial buffer does not overrun.
+    pub fn get_nmea_string_message_nonblocking(&mut self, msg: &mut ArrayString<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<(), RecvError> {
+        let chr = self.rx.read()?;
+        
+        if msg.is_empty() { // Wait until new message starts before recording
+            if chr == b'$' { 
+                msg.push('$');
+            }
+            return Err(nb::Error::WouldBlock);
+        }
+        if chr == b'\n' { // Message has finished
+            msg.push('\n');
+            return Ok(());
+        }
+        msg.push(chr as char);
+        Err(nb::Error::WouldBlock)
+    }
+
+    // TODO: Test
+    /// Get a GPS GGA packet as an ArrayString. Useful if you're just sending over the radio or logging to an SD card.
+    /// 
+    /// Slowly builds up a GGA message byte by byte by checking the serial buffer. Call this function repeatedly until it returns `Ok`.
+    /// 
+    /// This function must be called sufficiently frequently to ensure that the serial buffer does not overrun.
+    pub fn get_gga_string_message_nonblocking(&mut self, msg: &mut ArrayString<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<(), RecvError> {
+        self.get_nmea_string_message_nonblocking(msg)?;
+
+        if &msg[3..6] == "GGA" { Ok(()) } 
+        else {
+            msg.clear(); 
+            Err(nb::Error::WouldBlock)
+        }
+    }
+
+    // TODO: Test
+    /// Get a GPS GGA packet as a struct. Useful for on-device computation.
+    /// 
+    /// Slowly builds up a GGA message byte by byte by checking the serial buffer. Call this function repeatedly until it returns `Ok`.
+    /// 
+    /// This function must be called sufficiently frequently to ensure that the serial buffer does not overrun.
+    pub fn get_gga_message_nonblocking(&mut self, msg: &mut ArrayString<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<GgaMessage, GgaParseError> {
+        match self.get_gga_string_message_nonblocking(msg) {
+            Ok(()) => Ok( GgaMessage::try_from(&*msg)? ),
+            Err(nb::Error::WouldBlock) => Err(nb::Error::WouldBlock),
+            Err(nb::Error::Other(e)) => Err(nb::Error::Other(GgaParseError::SerialError(e))),
+        }      
+    }
+    
 }
 
 // A GGA packet in struct form. Useful for interpreting the results on-device.
@@ -72,10 +124,10 @@ pub struct GgaMessage {
     pub num_satellites: u8,
     pub altitude_msl: Altitude,
 }
-impl TryFrom<ArrayString<NMEA_MESSAGE_MAX_LEN>> for GgaMessage {
+impl TryFrom<&ArrayString<NMEA_MESSAGE_MAX_LEN>> for GgaMessage {
     type Error = GgaParseError;
 
-    fn try_from(msg: ArrayString<NMEA_MESSAGE_MAX_LEN>) -> Result<Self, Self::Error> {
+    fn try_from(msg: &ArrayString<NMEA_MESSAGE_MAX_LEN>) -> Result<Self, Self::Error> {
         let sections: ArrayVec<&str, 15> = msg.split(',').take(15).collect();
         if sections.len() != 15 { return Err(GgaParseError::WrongSectionCount) }
 
