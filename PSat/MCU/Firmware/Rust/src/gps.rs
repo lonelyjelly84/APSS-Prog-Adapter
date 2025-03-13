@@ -3,7 +3,6 @@
 use core::{fmt::Debug, num::ParseIntError};
 
 use arrayvec::{ArrayString, ArrayVec};
-use fixed::{types::extra::{U10, U24}, FixedI32};
 use msp430fr2x5x_hal::{
     clock::Smclk, 
     serial::{BitCount, BitOrder, Loopback, Parity, RecvError, SerialConfig, StopBits}};
@@ -16,6 +15,7 @@ const NMEA_MESSAGE_MAX_LEN: usize = 82;
 pub struct Gps {
     tx: GpsTx,
     rx: GpsRx,
+    rx_started: bool,
 }
 impl Gps {
     pub fn new(eusci_reg: GpsEusci, smclk: &Smclk, tx_pin: GpsTxPin, rx_pin: GpsRxPin) -> Self {
@@ -29,90 +29,66 @@ impl Gps {
             9600)
             .use_smclk(smclk)
             .split(tx_pin, rx_pin);
-        Self {tx, rx}
+        Self {tx, rx, rx_started: false}
     } 
 
-    /// Get the next GPS packet as an ArrayString.
-    pub fn get_nmea_string_message_blocking(&mut self) -> Result<ArrayString<NMEA_MESSAGE_MAX_LEN>, RecvError> {
-        let mut msg = ArrayString::new();
-        // Wait until start of a message. Messages begin with '$'
-        while nb::block!(self.rx.read())? != b'$' {}
-        msg.push('$');
-
-        // Push chars until '\n'
-        loop {
-            let chr = nb::block!(self.rx.read())?;
-            msg.push(chr as char);
-            if chr == b'\n' { break; }
-        }
-
-        Ok(msg)
-    }
-    /// Get a GPS GGA packet as an ArrayString. Useful if you're just sending over the radio or logging to an SD card.
-    pub fn get_gga_string_message_blocking(&mut self) -> Result<ArrayString<NMEA_MESSAGE_MAX_LEN>, RecvError> {
-        loop {
-            let msg = self.get_nmea_string_message_blocking()?;
-            if &msg[3..6] == "GGA" { return Ok(msg) }
-        }
-    }
-    /// Get a GPS GGA packet as a struct. Useful for on-device computation.
-    pub fn get_gga_message_blocking(&mut self) -> Result<GgaMessage, GgaParseError> {
-        let msg = self.get_gga_string_message_blocking().map_err(GgaParseError::SerialError)?;
-        crate::println!("{}", msg.as_str());
-        GgaMessage::try_from(&msg)
-    }
-
-    // TODO: Test
     /// Slowly builds up a message byte by byte by checking the serial buffer. Call this function repeatedly until it returns `Ok`.
     /// 
     /// This function must be called sufficiently frequently to ensure that the serial buffer does not overrun.
-    pub fn get_nmea_string_message_nonblocking(&mut self, msg: &mut ArrayString<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<(), RecvError> {
+    /// 
+    /// After this function returns `Ok(())`, calling it again will clear the buffer to prepare for the next message.
+    pub fn get_nmea_message_string(&mut self, buf: &mut ArrayString::<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<(), RecvError> {
+        if !self.rx_started {
+            buf.clear();
+            self.rx_started = true;
+        }
         let chr = self.rx.read()?;
         
-        if msg.is_empty() { // Wait until new message starts before recording
+        if buf.is_empty() { // Wait until new message starts before recording
             if chr == b'$' { 
-                msg.push('$');
+                buf.push('$');
             }
             return Err(nb::Error::WouldBlock);
         }
         if chr == b'\n' { // Message has finished
-            msg.push('\n');
+            buf.push('\n');
+            self.rx_started = false;
             return Ok(());
         }
-        msg.push(chr as char);
+        buf.push(chr as char);
         Err(nb::Error::WouldBlock)
     }
 
-    // TODO: Test
     /// Get a GPS GGA packet as an ArrayString. Useful if you're just sending over the radio or logging to an SD card.
     /// 
     /// Slowly builds up a GGA message byte by byte by checking the serial buffer. Call this function repeatedly until it returns `Ok`.
     /// 
     /// This function must be called sufficiently frequently to ensure that the serial buffer does not overrun.
-    pub fn get_gga_string_message_nonblocking(&mut self, msg: &mut ArrayString<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<(), RecvError> {
-        self.get_nmea_string_message_nonblocking(msg)?;
+    /// 
+    /// After this function returns `Ok(())`, calling it again will clear the buffer to prepare for the next message.
+    pub fn get_gga_message_string(&mut self, buf: &mut ArrayString::<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<(), RecvError> {
+        self.get_nmea_message_string(buf)?;
 
-        if &msg[3..6] == "GGA" { Ok(()) } 
+        if &buf[3..6] == "GGA" { Ok(()) } 
         else {
-            msg.clear(); 
             Err(nb::Error::WouldBlock)
         }
     }
 
-    // TODO: Test
     /// Get a GPS GGA packet as a struct. Useful for on-device computation.
     /// 
     /// Slowly builds up a GGA message byte by byte by checking the serial buffer. Call this function repeatedly until it returns `Ok`.
     /// 
     /// This function must be called sufficiently frequently to ensure that the serial buffer does not overrun.
-    pub fn get_gga_message_nonblocking(&mut self, msg: &mut ArrayString<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<GgaMessage, GgaParseError> {
-        match self.get_gga_string_message_nonblocking(msg) {
-            Ok(()) => Ok( GgaMessage::try_from(&*msg)? ),
+    /// 
+    /// After this function returns `Ok(())`, calling it again will clear the buffer to prepare for the next message.
+    pub fn get_gga_message(&mut self, buf: &mut ArrayString::<NMEA_MESSAGE_MAX_LEN>) -> nb::Result<GgaMessage, GgaParseError> {
+        match self.get_gga_message_string(buf) {
+            Ok(_) => Ok( GgaMessage::try_from(&*buf)? ),
             Err(nb::Error::WouldBlock) => Err(nb::Error::WouldBlock),
             Err(nb::Error::Other(e)) => Err(nb::Error::Other(GgaParseError::SerialError(e))),
-        }      
+        }
     }
-    
 }
 
 // A GGA packet in struct form. Useful for interpreting the results on-device.
@@ -263,7 +239,7 @@ impl TryFrom<(&str, &str)> for Degrees {
             minutes_str      = &degrees_str[3..5];
             minutes_frac_str = &degrees_str[6..10];
         }
-    
+
         // 24.3761 -> 243761
         let mut minutes_times_10000 = ArrayString::<6>::from(minutes_str).unwrap();
         minutes_times_10000.push_str(minutes_frac_str);

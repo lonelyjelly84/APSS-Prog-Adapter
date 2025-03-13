@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 
+use arrayvec::ArrayString;
 use gps::GgaParseError;
 // External imports
 use msp430_rt::entry;
@@ -25,14 +26,17 @@ fn main() -> ! {
     // Prints over eUSCI A0. See board::configure() for details.
     println!("Hello world!");
 
+    let mut buf = ArrayString::new();
     loop {
-        match board.gps.get_gga_message_blocking() {
+
+        match nb::block!(board.gps.get_gga_message(&mut buf)) {
             Ok(results) => {
                 println!("Time: {}, Lat: {}, Long: {}, Fix type: {:?}, Num sats: {}, Altitude: {}", 
                     results.utc_time, results.latitude, results.longitude, results.fix_type, results.num_satellites, results.altitude_msl
                 );
+                nb::block!(board.radio.transmit(&[results.num_satellites])).unwrap();
             },
-            Err(GgaParseError::NoFix) => println!("No Fix..."),
+            Err(GgaParseError::NoFix) => (),
             Err(GgaParseError::SerialError(_)) => (),
             Err(e) => panic!("{:?}", e)
         }

@@ -1,7 +1,4 @@
 #![allow(dead_code)]
-
-use core::time::Duration;
-
 use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
@@ -25,87 +22,53 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_sync_word(SyncWord::PRIVATE);
     rfm95.set_config(&lora_config).unwrap();
 
-    Radio{driver: rfm95}
+    Radio{driver: rfm95, rx_started: false, tx_started: false}
 }
 
 pub type RFM95 = Rfm95Driver<Forward<SpiBus<RadioEusci>>, Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>>;
 /// Top-level interface for the radio module.
 pub struct Radio {
     pub driver: RFM95,
+    rx_started: bool,
+    tx_started: bool,
 }
 impl Radio {
-    /// Transmit data and wait until transmission is complete.
-    /// 
-    /// Panics upon recieving any error from the radio module.
-    pub fn blocking_transmit(&mut self, data: &[u8]) {
-        self.driver.start_tx(data).unwrap();
-        loop {
-            match self.driver.complete_tx(){
-                Ok(None) => continue,   // Still sending
-                Ok(_) => return,        // Sending complete
-                Err(e) => panic!("{e}"),
-            }
+    // TODO: Test
+    pub fn recieve<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> nb::Result<&'a [u8], &'static str> {
+        if !self.rx_started {
+            let timeout = self.driver.rx_timeout_max()?;
+            self.driver.start_rx(timeout)?;
+            self.rx_started = true;
         }
-    }
-    /// Try to recieve data, and don't return until a packet is recieved.
-    /// 
-    /// Panics upon recieving any non-timeout error from the radio module.
-    pub fn blocking_recieve<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> &'a [u8] {
-        let size;
-        'outer: loop {
-            let max_timeout = self.driver.rx_timeout_max().unwrap();
-            self.driver.start_rx(max_timeout).unwrap();
-            
-            'inner: loop {
-                match self.driver.complete_rx(buf) {
-                    Ok(Some(n)) => {size = n; break 'outer;},
-                    Ok(None) => continue,
-                    Err("RX timeout") => break 'inner,
-                    Err(e) => panic!("{e}"),
-                };
-            };
-        }
-        &buf[0..size]
-    }
-    /// Begin transmission and return immediately. Check whether the transmission is complete by calling `async_transmit_is_complete()`.
-    pub fn async_transmit_start(&mut self, data: &[u8]) {
-        self.driver.start_tx(data).unwrap();
-    }
-
-    /// Check whether the radio has finished sending.
-    /// 
-    /// Panics upon recieving any error from the radio module.
-    pub fn async_transmit_is_complete(&mut self) -> bool {
-        match self.driver.complete_tx(){
-            Ok(None) => false,    // Still sending
-            Ok(_) => true,        // Sending complete
-            Err(e) => panic!("{e}"),
-        }
-    }
-    /// Tell the radio to listen for a packet and return immediately. Check whether anything was recieved by calling `async_recieve_is_complete()`.
-    /// 
-    /// A timeout value is optional, if none is provided the maximum timeout is used. You should prepare to deal with timeouts.
-    pub fn async_recieve_start(&mut self, timeout: Option<Duration>) {
-        let timeout = match timeout {
-            Some(t) => t,
-            None => self.driver.rx_timeout_max().unwrap(),
-        };
-        self.driver.start_rx(timeout).unwrap();
-    }
-
-    /// Check whether the radio has recieved a packet. If so, returns the packet as a slice of bytes.
-    /// 
-    /// If not, returns either `StillRecieving` or `RxTimeout`. In the timeout case you should call `async_recieve_start()` again.
-    /// 
-    /// Panics upon recieving any non-timeout error from the radio module.
-    pub fn async_recieve_is_complete<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> Result<&'a [u8], RadioRecieveError> {
         let size = match self.driver.complete_rx(buf) {
             Ok(Some(n)) => n,
-            Ok(None) => return Err(RadioRecieveError::StillRecieving),
-            Err("RX timeout") => return Err(RadioRecieveError::RxTimeout),
-            Err(e) => panic!("{e}"),
+            Ok(None) => return Err(nb::Error::WouldBlock),
+            Err("RX timeout") => {
+                let timeout = self.driver.rx_timeout_max()?;
+                self.driver.start_rx(timeout)?;
+                return Err(nb::Error::WouldBlock);
+            },
+            Err(e) => Err(e)?,
         };
+        self.rx_started = false;
         Ok(&buf[0..size])
+    }
+
+    // TODO: Test
+    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<usize, &'static str> {
+        if !self.tx_started {
+            self.driver.start_tx(data)?;
+            self.tx_started = true;
+        }
+
+        match self.driver.complete_tx() {
+            Ok(None) => Err(nb::Error::WouldBlock),  // Still sending
+            Ok(Some(n)) => {                         // Sending complete
+                self.tx_started = false;
+                Ok(n)
+            },
+            Err(e) => Err(e)?,
+        }
     }
 }
 
@@ -156,7 +119,7 @@ pub mod tests {
                 b':', 
                 current_time.seconds / 10 + b'0', 
                 current_time.seconds % 10 + b'0'];
-            board.radio.blocking_transmit(&bytes);
+            let _ = board.radio.transmit(bytes.as_slice());
             nb::block!(board.timer_b0.wait()).ok();
             current_time.increment();
             board.gpio.green_led.toggle();
@@ -167,18 +130,16 @@ pub mod tests {
         let mut buf = [0u8; embedded_lora_rfm95::rfm95::RFM95_FIFO_SIZE];
         let mut current_time = Time::default();
         board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
-        board.radio.async_recieve_start(None);
         loop {
-            match board.radio.async_recieve_is_complete(&mut buf) {
-                Err(super::RadioRecieveError::StillRecieving) => (),
-                Err(super::RadioRecieveError::RxTimeout) => board.radio.async_recieve_start(None),
+            match board.radio.recieve(&mut buf) {
                 Ok(packet) => {
                     let signal_strength = board.radio.driver.get_packet_strength().unwrap();
                     let rssi = board.radio.driver.get_rssi().unwrap(); 
                     let snr = board.radio.driver.get_packet_snr().unwrap(); 
                     crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(packet).unwrap(), signal_strength, rssi, snr);
-                    board.radio.async_recieve_start(None)
                 },
+                Err(nb::Error::Other(e)) => panic!("{}", e),
+                Err(nb::Error::WouldBlock) => (),
             }
 
             if board.timer_b0.wait().is_ok() {
