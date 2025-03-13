@@ -136,7 +136,7 @@ impl TryFrom<&ArrayString<NMEA_MESSAGE_MAX_LEN>> for GgaMessage {
 
         Ok( GgaMessage { 
             utc_time: UtcTime::try_from(sections[1])                .unwrap(),//.map_err(GgaParseError::UtcParseError)?, 
-            latitude: Degrees::try_from((sections[2], sections[3])) .unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
+            latitude:  Degrees::try_from((sections[2], sections[3])).unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
             longitude: Degrees::try_from((sections[4], sections[5])).unwrap(),//.map_err(GgaParseError::LatLongParseError)?, 
             num_satellites: sections[7].parse()                     .unwrap(),//.map_err(GgaParseError::InvalidSatelliteNumber)?, 
             altitude_msl: Altitude::try_from(sections[9])           .unwrap(),//.map_err(GgaParseError::AltitudeParseError)?, 
@@ -207,7 +207,6 @@ impl TryFrom<&str> for UtcTime {
     type Error = UtcError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        crate::println!("{}", value);
         if value.len() < 6 {
             return Err(UtcError::StrTooShort)
         }
@@ -225,38 +224,20 @@ pub enum UtcError {
 }
 
 /// A degrees value, stored as a decimal fraction.
-pub struct Degrees(pub FixedI32<U24>);
+pub struct Degrees {
+    degrees: i16,
+    degrees_millionths: u32,
+}
 impl uDisplay for Degrees {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
     where
         W: ufmt::uWrite + ?Sized {
-        const FRAC_BITS: u32 = 24;
-        const FRAC_MASK: u32 = (1 << FRAC_BITS) - 1;
-        const MAX_PRECISION: u32 = 6;
-
-        let mut fxd = self.0;
-            
-        let sign = if fxd < 0 {'-'} else {'+'};
-
-        // Fractional bits are always positive, even for negative numbers. Make the number positive so they make sense
-        if sign == '-' {fxd *= -1;} 
-
-        let whole: i32 = fxd.to_num();
-        uwrite!(f, "{}{}", sign, whole)?;
-
-        let mut frac: u32 = (fxd.frac().to_bits() as u32) & FRAC_MASK;
-
-        if frac != 0 { uwrite!(f, ".")?; }
-
-        let mut precision = 0;
-        while frac != 0 && precision < MAX_PRECISION {
-            frac *= 10;
-            let digit = frac >> FRAC_BITS;
-            uwrite!(f, "{}", digit)?;
-            frac &= FRAC_MASK;
-            precision += 1;
+        let mut leading_zeroes = ArrayString::<6>::new(); 
+        for _ in 0..5-self.degrees_millionths.checked_ilog10().unwrap_or(0) {
+            leading_zeroes.push('0');
         }
-        uwrite!(f, "°")
+
+        uwrite!(f, "{}.{}{} deg", self.degrees, leading_zeroes.as_str(), self.degrees_millionths)
     }
 }
 impl TryFrom<(&str, &str)> for Degrees {
@@ -264,27 +245,34 @@ impl TryFrom<(&str, &str)> for Degrees {
 
     fn try_from(value: (&str, &str)) -> Result<Self, Self::Error> {
         let (degrees_str, compass_direction) = value;
-        crate::println!("{}, {}", degrees_str, compass_direction);
         if degrees_str.is_empty() || compass_direction.is_empty() {
             return Err(LatLongParseError::NoData);
         }
         let degrees: i16; 
-        let minutes: FixedI32::<U24>;
+        let minutes_str: &str;
+        let minutes_frac_str: &str;
         let (first_half, _) = degrees_str.split_once('.').unwrap();
     
         if first_half.len() == 4 { // ddmm
-            degrees = degrees_str[0..2].parse().unwrap();
-            minutes = degrees_str[2.. ].parse().unwrap();
+            degrees          =  degrees_str[0..2].parse().unwrap();
+            minutes_str      = &degrees_str[2..4];
+            minutes_frac_str = &degrees_str[5..9];
+
         } else { // dddmm
-            degrees = degrees_str[0..3].parse().unwrap();
-            minutes = degrees_str[3.. ].parse().unwrap();
+            degrees          =  degrees_str[0..3].parse().unwrap();
+            minutes_str      = &degrees_str[3..5];
+            minutes_frac_str = &degrees_str[6..10];
         }
     
-        let fxd = FixedI32::<U24>::from_num(degrees) + minutes/60;
+        // 24.3761 -> 243761
+        let mut minutes_times_10000 = ArrayString::<6>::from(minutes_str).unwrap();
+        minutes_times_10000.push_str(minutes_frac_str);
+
+        let degrees_millionths: u32 = minutes_times_10000.parse::<u32>().unwrap() * 100 / 60;
     
         match compass_direction {
-            "N" | "E" => Ok(Degrees(fxd)),
-            "S" | "W" => Ok(Degrees(-fxd)),
+            "N" | "E" => Ok(Degrees{degrees,            degrees_millionths}),
+            "S" | "W" => Ok(Degrees{degrees: -degrees,  degrees_millionths}),
             _ => Err(LatLongParseError::InvalidCompassDirection)
         }
     }
@@ -305,7 +293,6 @@ impl TryFrom<&str> for GpsFixType{
     type Error = ();
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        crate::println!("{}", value);
         Ok(match value {
             "0" => GpsFixType::None,
             "1" => GpsFixType::Gps,
@@ -315,45 +302,22 @@ impl TryFrom<&str> for GpsFixType{
     }
 }
 
-pub struct Altitude(pub FixedI32<U10>);
+pub struct Altitude{
+    decimetres: i32,
+}
 impl TryFrom<&str> for Altitude {
-    type Error = fixed::ParseFixedError;
+    type Error = ParseIntError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        crate::println!("{}", value);
-        Ok(Altitude(value.parse()?))
+        let (whole, frac) = value.split_once(".").unwrap();
+        Ok(Altitude{ decimetres: whole.parse::<i32>()?*10 + frac[..1].parse::<i32>()?})
     }
 }
 impl uDisplay for Altitude {
     fn fmt<W>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error>
-    where
-        W: ufmt::uWrite + ?Sized { 
-        const FRAC_BITS: u32 = 10;
-        const FRAC_MASK: u32 = (1 << FRAC_BITS) - 1;
-        const MAX_PRECISION: u32 = 3;
+    where W: ufmt::uWrite + ?Sized { 
+        let metres = self.decimetres / 10;
 
-        let mut fxd = self.0;
-            
-        let sign = if fxd < 0 {'-'} else {'+'};
-
-        // Fractional bits are always positive, even for negative numbers. Make the number positive so they make sense
-        if sign == '-' {fxd *= -1;} 
-
-        let whole: i32 = fxd.to_num();
-        uwrite!(f, "{}{}", sign, whole)?;
-
-        let mut frac: u32 = (fxd.frac().to_bits() as u32) & FRAC_MASK;
-
-        if frac != 0 { uwrite!(f, ".")?; }
-
-        let mut precision = 0;
-        while frac != 0 && precision < MAX_PRECISION {
-            frac *= 10;
-            let digit = frac >> FRAC_BITS;
-            uwrite!(f, "{}", digit)?;
-            frac &= FRAC_MASK;
-            precision += 1;
-        }
-        uwrite!(f, "m")
+        uwrite!(f, "{}.{}m", metres, self.decimetres - metres*10 )
     }
 }
