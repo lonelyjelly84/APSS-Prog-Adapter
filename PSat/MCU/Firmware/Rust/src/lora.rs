@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use arrayvec::ArrayVec;
 use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
@@ -22,49 +23,50 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_sync_word(SyncWord::PRIVATE);
     rfm95.set_config(&lora_config).unwrap();
 
-    Radio{driver: rfm95, rx_started: false, tx_started: false}
+    Radio{driver: rfm95, rx_idle: false, tx_idle: false}
 }
 
 pub type RFM95 = Rfm95Driver<Forward<SpiBus<RadioEusci>>, Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>>;
 /// Top-level interface for the radio module.
 pub struct Radio {
     pub driver: RFM95,
-    rx_started: bool,
-    tx_started: bool,
+    rx_idle: bool,
+    tx_idle: bool,
 }
 impl Radio {
     // TODO: Test
-    pub fn recieve<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> nb::Result<&'a [u8], &'static str> {
-        if !self.rx_started {
+    pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), &'static str> {
+        if self.rx_idle {
             let timeout = self.driver.rx_timeout_max()?;
             self.driver.start_rx(timeout)?;
-            self.rx_started = true;
+            self.rx_idle = false;
         }
-        let size = match self.driver.complete_rx(buf) {
-            Ok(Some(n)) => n,
-            Ok(None) => return Err(nb::Error::WouldBlock),
+        match self.driver.complete_rx(buf) {
+            Ok(Some(_)) => {
+                self.rx_idle = true;
+                Ok(())
+            },
+            Ok(None) => Err(nb::Error::WouldBlock),
             Err("RX timeout") => {
                 let timeout = self.driver.rx_timeout_max()?;
                 self.driver.start_rx(timeout)?;
-                return Err(nb::Error::WouldBlock);
+                Err(nb::Error::WouldBlock)
             },
             Err(e) => Err(e)?,
-        };
-        self.rx_started = false;
-        Ok(&buf[0..size])
+        }
     }
 
     // TODO: Test
     pub fn transmit(&mut self, data: &[u8]) -> nb::Result<usize, &'static str> {
-        if !self.tx_started {
+        if self.tx_idle {
             self.driver.start_tx(data)?;
-            self.tx_started = true;
+            self.tx_idle = false;
         }
 
         match self.driver.complete_tx() {
             Ok(None) => Err(nb::Error::WouldBlock),  // Still sending
             Ok(Some(n)) => {                         // Sending complete
-                self.tx_started = false;
+                self.tx_idle = true;
                 Ok(n)
             },
             Err(e) => Err(e)?,
@@ -103,6 +105,7 @@ impl DelayNs for DelayWrapper {
 }
 
 pub mod tests {
+    use arrayvec::ArrayVec;
     use embedded_hal::timer::CountDown;
     use ufmt::uwrite;
 
@@ -127,16 +130,16 @@ pub mod tests {
     }
 
     pub fn range_test_rx(mut board: crate::board::Board) -> ! {
-        let mut buf = [0u8; embedded_lora_rfm95::rfm95::RFM95_FIFO_SIZE];
+        let mut buf = ArrayVec::new();
         let mut current_time = Time::default();
         board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
         loop {
             match board.radio.recieve(&mut buf) {
-                Ok(packet) => {
+                Ok(_) => {
                     let signal_strength = board.radio.driver.get_packet_strength().unwrap();
                     let rssi = board.radio.driver.get_rssi().unwrap(); 
                     let snr = board.radio.driver.get_packet_snr().unwrap(); 
-                    crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(packet).unwrap(), signal_strength, rssi, snr);
+                    crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(&buf).unwrap(), signal_strength, rssi, snr);
                 },
                 Err(nb::Error::Other(e)) => panic!("{}", e),
                 Err(nb::Error::WouldBlock) => (),
