@@ -14,18 +14,18 @@ use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::SpiBus;
 
 /// Raw SPI command interface for RFM95
-pub struct Rfm95Driver<Bus, Select>
+pub struct Rfm95Driver<Bus, Pin>
 where
     Bus: SpiBus,
-    Select: OutputPin,
+    Pin: OutputPin,
 {
     /// The SPI connection to the RFM95 radio
-    spi: Rfm95Connection<Bus, Select>,
+    spi: Rfm95Connection<Bus, Pin>,
 }
-impl<Bus, Select> Rfm95Driver<Bus, Select>
+impl<Bus, Pin> Rfm95Driver<Bus, Pin>
 where
     Bus: SpiBus,
-    Select: OutputPin,
+    Pin: OutputPin,
 {
     /// Supported silicon revisions for compatibility check
     #[cfg(not(feature = "debug"))]
@@ -57,17 +57,17 @@ where
     /// # Important
     /// The RFM95 modem is initialized to LoRa-mode and put to standby. All other configurations are left untouched, so
     /// you probably want to configure the modem initially (also see [`Self::set_config`]).
-    pub fn new<R, T>(bus: Bus, select: Select, mut reset: R, mut timer: T) -> Result<Self, &'static str>
+    pub fn new<T, R>(bus: Bus, select: Pin, mut reset: R, mut timer: T) -> Result<Self, InitError<Bus, R, Pin>>
     where
         R: OutputPin,
         T: DelayNs,
     {
         // Pull reset to low and wait until the reset is triggered
-        reset.set_low().map_err(|_| "Failed to pull reset line to low")?;
+        reset.set_low().map_err(InitError::ResetPin)?;
         timer.delay_ms(1);
 
         // Pull reset to high again and give the chip some time to boot
-        reset.set_high().map_err(|_| "Failed to pull reset line to high")?;
+        reset.set_high().map_err(InitError::ResetPin)?;
         timer.delay_ms(10);
 
         // Validate chip revision to assure the protocol matches
@@ -75,10 +75,10 @@ where
         #[cfg(not(feature = "debug"))]
         {
             // Get chip revision
-            let silicon_revision = wire.read(RegVersion)?;
+            let silicon_revision = wire.read(RegVersion).map_err(|e| InitError::SpiBus(e))?;
             let true = Self::SUPPORTED_SILICON_REVISIONS.contains(&silicon_revision) else {
                 // Raise an error here since other revisions may be incompatible
-                return Err("Unsupported silicon revision");
+                return Err(InitError::UnsupportedSiliconRevision);
             };
         }
 
@@ -98,7 +98,7 @@ where
     }
 
     /// Applies the given config (useful for initialization)
-    pub fn set_config(&mut self, config: &Config) -> Result<(), &'static str> {
+    pub fn set_config(&mut self, config: &Config) -> Result<(), ConfigError<Bus, Pin>> {
         self.set_spreading_factor(config.spreading_factor())?;
         self.set_bandwidth(config.bandwidth())?;
         self.set_coding_rate(config.coding_rate())?;
@@ -112,12 +112,12 @@ where
     }
 
     /// The current spreading factor
-    pub fn spreading_factor(&mut self) -> Result<SpreadingFactor, &'static str> {
+    pub fn spreading_factor(&mut self) -> Result<SpreadingFactor, ConfigError<Bus, Pin>> {
         let spreading_factor = self.spi.read(RegModemConfig2SpreadingFactor)?;
-        SpreadingFactor::try_from(spreading_factor)
+        Ok(SpreadingFactor::try_from(spreading_factor)?)
     }
     /// Set the spreading factor
-    pub fn set_spreading_factor<T>(&mut self, spreading_factor: T) -> Result<(), &'static str>
+    pub fn set_spreading_factor<T>(&mut self, spreading_factor: T) -> Result<(), ConfigError<Bus, Pin>>
     where
         T: Into<SpreadingFactor>,
     {
@@ -133,12 +133,12 @@ where
     }
 
     /// The current bandwidth
-    pub fn bandwidth(&mut self) -> Result<Bandwidth, &'static str> {
+    pub fn bandwidth(&mut self) -> Result<Bandwidth, ConfigError<Bus, Pin>> {
         let bandwidth = self.spi.read(RegModemConfig1Bw)?;
-        Bandwidth::try_from(bandwidth)
+        Ok(Bandwidth::try_from(bandwidth)?)
     }
     /// Sets the bandwidth
-    pub fn set_bandwidth<T>(&mut self, bandwidth: T) -> Result<(), &'static str>
+    pub fn set_bandwidth<T>(&mut self, bandwidth: T) -> Result<(), ConfigError<Bus, Pin>>
     where
         T: Into<Bandwidth>,
     {
@@ -154,12 +154,12 @@ where
     }
 
     /// The current coding rate
-    pub fn coding_rate(&mut self) -> Result<CodingRate, &'static str> {
+    pub fn coding_rate(&mut self) -> Result<CodingRate, ConfigError<Bus, Pin>> {
         let coding_rate = self.spi.read(RegModemConfig1CodingRate)?;
-        CodingRate::try_from(coding_rate)
+        Ok(CodingRate::try_from(coding_rate)?)
     }
     /// Sets the coding rate
-    pub fn set_coding_rate<T>(&mut self, coding_rate: T) -> Result<(), &'static str>
+    pub fn set_coding_rate<T>(&mut self, coding_rate: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<CodingRate>,
     {
@@ -168,12 +168,12 @@ where
     }
 
     /// The current IQ polarity
-    pub fn polarity(&mut self) -> Result<Polarity, &'static str> {
+    pub fn polarity(&mut self) -> Result<Polarity, ConfigError<Bus, Pin>> {
         let polarity = self.spi.read(RegInvertIQ)?;
-        Polarity::try_from(polarity)
+        Ok(Polarity::try_from(polarity)?)
     }
     /// Sets the IQ polarity
-    pub fn set_polarity<T>(&mut self, polarity: T) -> Result<(), &'static str>
+    pub fn set_polarity<T>(&mut self, polarity: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<Polarity>,
     {
@@ -182,12 +182,12 @@ where
     }
 
     /// The current header mode
-    pub fn header_mode(&mut self) -> Result<HeaderMode, &'static str> {
+    pub fn header_mode(&mut self) -> Result<HeaderMode, ConfigError<Bus, Pin>> {
         let header_mode = self.spi.read(RegModemConfig1ImplicitHeaderModeOn)?;
-        HeaderMode::try_from(header_mode)
+        Ok(HeaderMode::try_from(header_mode)?)
     }
     /// Sets the header mode
-    pub fn set_header_mode<T>(&mut self, header_mode: T) -> Result<(), &'static str>
+    pub fn set_header_mode<T>(&mut self, header_mode: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<HeaderMode>,
     {
@@ -196,12 +196,12 @@ where
     }
 
     /// The current CRC mode
-    pub fn crc_mode(&mut self) -> Result<CrcMode, &'static str> {
+    pub fn crc_mode(&mut self) -> Result<CrcMode, ConfigError<Bus, Pin>> {
         let crc_mode = self.spi.read(RegModemConfig2RxPayloadCrcOn)?;
-        CrcMode::try_from(crc_mode)
+        Ok(CrcMode::try_from(crc_mode)?)
     }
     /// Sets the CRC mode
-    pub fn set_crc_mode<T>(&mut self, crc: T) -> Result<(), &'static str>
+    pub fn set_crc_mode<T>(&mut self, crc: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<CrcMode>,
     {
@@ -210,12 +210,12 @@ where
     }
 
     /// The current sync word
-    pub fn sync_word(&mut self) -> Result<SyncWord, &'static str> {
+    pub fn sync_word(&mut self) -> Result<SyncWord, ConfigError<Bus, Pin>> {
         let sync_word = self.spi.read(RegSyncWord)?;
         Ok(SyncWord::new(sync_word))
     }
     /// Sets the sync word
-    pub fn set_sync_word<T>(&mut self, sync_word: T) -> Result<(), &'static str>
+    pub fn set_sync_word<T>(&mut self, sync_word: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<SyncWord>,
     {
@@ -224,7 +224,7 @@ where
     }
 
     /// The current preamble length
-    pub fn preamble_len(&mut self) -> Result<PreambleLength, &'static str> {
+    pub fn preamble_len(&mut self) -> Result<PreambleLength, ConfigError<Bus, Pin>> {
         // Read registers
         let preamble_len_msb = self.spi.read(RegPreambleMsb)?;
         let preamble_len_lsb = self.spi.read(RegPreambleLsb)?;
@@ -234,7 +234,7 @@ where
         Ok(PreambleLength::new(preamble_len))
     }
     /// Sets the preamble length
-    pub fn set_preamble_len<T>(&mut self, len: T) -> Result<(), &'static str>
+    pub fn set_preamble_len<T>(&mut self, len: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<PreambleLength>,
     {
@@ -244,7 +244,7 @@ where
     }
 
     /// The current frequency
-    pub fn frequency(&mut self) -> Result<Frequency, &'static str> {
+    pub fn frequency(&mut self) -> Result<Frequency, ConfigError<Bus, Pin>> {
         // Read frequency from registers
         let frequency_msb = self.spi.read(RegFrMsb)?;
         let frequency_mid = self.spi.read(RegFrMid)?;
@@ -258,7 +258,7 @@ where
         Ok(Frequency::hz(frequency))
     }
     /// Sets the frequency
-    pub fn set_frequency<T>(&mut self, frequency: T) -> Result<(), &'static str>
+    pub fn set_frequency<T>(&mut self, frequency: T) -> Result<(), SpiBusError<Bus, Pin>>
     where
         T: Into<Frequency>,
     {
@@ -286,11 +286,11 @@ where
     /// # Non-Blocking
     /// This functions schedules the TX operation and returns immediately. To check if the TX operation is done, use
     /// [`Self::complete_tx`].
-    pub fn start_tx(&mut self, data: &[u8]) -> Result<(), &'static str> {
+    pub fn start_tx(&mut self, data: &[u8]) -> Result<(), TxError<Bus, Pin>> {
         // Validate input length
         let 1..=RFM95_FIFO_SIZE = data.len() else {
             // The message is empty or too long
-            return Err("Invalid TX data length");
+            return Err(TxError::InvalidBufferSize);
         };
 
         // Copy packet into FIFO...
@@ -314,7 +314,7 @@ where
     ///
     /// # Non-Blocking
     /// This function is non-blocking. If the TX operation is not done yet, it returns `Ok(None)`.
-    pub fn complete_tx(&mut self) -> Result<Option<usize>, &'static str> {
+    pub fn complete_tx(&mut self) -> Result<Option<usize>, SpiBusError<Bus, Pin>> {
         // Check for TX done
         let 0b1 = self.spi.read(RegIrqFlagsTxDone)? else {
             // The TX operation has not been completed yet
@@ -338,7 +338,7 @@ where
     /// the maximum timeout, we take the configured [`Self::spreading_factor`] and [`Self::bandwidth`], and get the
     /// duration of a single symbol via [`crate::lora::airtime::symbol_airtime`]. The maximum timeout is the duration of
     /// a single symbol, multiplied with `1023`.
-    pub fn rx_timeout_max(&mut self) -> Result<Duration, &'static str> {
+    pub fn rx_timeout_max(&mut self) -> Result<Duration, ConfigError<Bus, Pin>> {
         // Get current config
         let spreading_factor = self.spreading_factor()?;
         let bandwidth = self.bandwidth()?;
@@ -356,18 +356,24 @@ where
     /// # Maximum Timeout
     /// The RFM95 timeout counter works by counting symbols, and is thus dependent on the configured spreading factor
     /// and bandwidth. See also [`Self::rx_timeout_max`].
-    pub fn start_rx(&mut self, timeout: Duration) -> Result<(), &'static str> {
+    pub fn start_rx(&mut self, timeout: Duration) -> Result<(), RxConfigError<Bus, Pin>> {
         // Get the current symbol airtime in microseconds
-        let spreading_factor = self.spreading_factor()?;
-        let bandwidth = self.bandwidth()?;
+        let spreading_factor = self.spreading_factor().map_err(|err| match err {
+            ConfigError::SpiBus(e) => RxConfigError::SpiBus(e),
+            ConfigError::InvalidOrUnsupportedValue => RxConfigError::InvalidOrUnsupportedValue,
+        })?;
+        let bandwidth = self.bandwidth().map_err(|err| match err {
+            ConfigError::SpiBus(e) => RxConfigError::SpiBus(e),
+            ConfigError::InvalidOrUnsupportedValue => RxConfigError::InvalidOrUnsupportedValue,
+        })?;
         let symbol_airtime = airtime::symbol_airtime(spreading_factor, bandwidth);
         let symbol_airtime_micros = symbol_airtime.as_micros() as i32;
 
         // Compute the raw timeout
-        let timeout_micros = i32::try_from(timeout.as_micros()).map_err(|_| "Timeout is too long")?;
+        let timeout_micros = i32::try_from(timeout.as_micros()).map_err(|_| RxConfigError::TimeoutTooLarge)?;
         let timeout_symbols @ 0..1024 = airtime::ceildiv(timeout_micros, symbol_airtime_micros) as u32 else {
             // This timeout is too large to be configured
-            return Err("Effective timeout is too large");
+            return Err(RxConfigError::TimeoutTooLarge);
         };
 
         // Configure the timeout and reset the address pointer
@@ -398,15 +404,15 @@ where
     /// # Timeout or CRC errors
     /// If the receive operation times out or the received message is corrupt,
     #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn complete_rx(&mut self, buf: &mut [u8]) -> Result<Option<usize>, &'static str> {
+    pub fn complete_rx(&mut self, buf: &mut [u8]) -> Result<Option<usize>, RxError<Bus, Pin>> {
         // Check for errors
         let 0b0 = self.spi.read(RegIrqFlagsRxTimeout)? else {
             // The RX operation has timeouted
-            return Err("RX timeout");
+            return Err(RxError::RxTimeout);
         };
         let 0b0 = self.spi.read(RegIrqFlagsPayloadCrcError)? else {
             // The RX operation has failed
-            return Err("RX CRC error");
+            return Err(RxError::CrcFailure);
         };
 
         // Check for RX done
@@ -447,7 +453,7 @@ where
     /// Get the signal strength of the last recieved packet.
     /// 
     /// Unlike RSSI, this accounts for LoRa's ability to recieve packets below the noise floor.
-    pub fn get_packet_strength(&mut self) -> Result<i16, &'static str> {
+    pub fn get_packet_strength(&mut self) -> Result<i16, ConfigError<Bus, Pin>> {
         let offset = if self.frequency()? >= Self::HF_LF_BOUNDARY_FREQ {Self::HF_RSSI_OFFSET} else {Self::LF_RSSI_OFFSET};
         let snr = self.get_packet_snr()?;
         if snr >= 0 {
@@ -459,7 +465,7 @@ where
     }
 
     /// Get a Relative Signal Strength Indicator (RSSI) of the last recieved packet.
-    pub fn get_rssi(&mut self) -> Result<i16, &'static str> {
+    pub fn get_rssi(&mut self) -> Result<i16, ConfigError<Bus, Pin>> {
         let offset = if self.frequency()? > Self::HF_LF_BOUNDARY_FREQ {Self::HF_RSSI_OFFSET} else {Self::LF_RSSI_OFFSET};
         if self.get_packet_snr()? >= 0 {
             Ok( self.spi.read(RegPktRssiValue)? as i16 * 16/15 + offset )
@@ -470,14 +476,14 @@ where
     }
 
     /// Get the Signal to Noise Ratio (SNR) of the last recieved packet.
-    pub fn get_packet_snr(&mut self) -> Result<i8, &'static str> {
+    pub fn get_packet_snr(&mut self) -> Result<i8, SpiBusError<Bus, Pin>> {
         // The value is stored in two's complement form in the register, so the cast to i8 is fine
         Ok( (self.spi.read(RegPktSnrValue)? as i8 ) / 4)
     }
 
     /// Dumps all used registers; usefule for debugging purposes
     #[cfg(feature = "debug")]
-    pub fn dump_registers(&mut self) -> Result<[u8; REGISTER_MAX as usize + 1], &'static str> {
+    pub fn dump_registers(&mut self) -> Result<[u8; REGISTER_MAX as usize + 1], SpiBusError<Bus, Pin>> {
         // A dynamic register for dumping purposes
         struct DynamicRegister(u8);
         impl Register for DynamicRegister {
@@ -497,7 +503,7 @@ where
     }
     /// Dumps the entire FIFO contents
     #[cfg(feature = "debug")]
-    pub fn dump_fifo(&mut self) -> Result<[u8; RFM95_FIFO_SIZE], &'static str> {
+    pub fn dump_fifo(&mut self) -> Result<[u8; RFM95_FIFO_SIZE], SpiBusError<Bus, Pin>> {
         // Save FIFO position
         let fifo_position = self.spi.read(RegFifoAddrPtr)?;
 
@@ -514,10 +520,10 @@ where
         Ok(dump)
     }
 }
-impl<Bus, Select> Debug for Rfm95Driver<Bus, Select>
+impl<Bus, Pin> Debug for Rfm95Driver<Bus, Pin>
 where
     Bus: SpiBus,
-    Select: OutputPin,
+    Pin: OutputPin,
 {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         f.debug_struct("Rfm95Driver").field("spi", &self.spi).finish()

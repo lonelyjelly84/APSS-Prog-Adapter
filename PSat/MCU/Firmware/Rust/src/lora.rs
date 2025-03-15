@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use arrayvec::ArrayVec;
-use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
+use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpiBusError, SpreadingFactor, SyncWord, TxError}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
 use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
@@ -8,7 +8,12 @@ use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
 const LORA_FREQ_HZ: u32 = 915_000_000;
 
 pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
-    let mut rfm95 = Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)).unwrap();
+    let mut rfm95 = match Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)) {
+        Ok(rfm) => rfm,
+        Err(embedded_lora_rfm95::lora::types::InitError::ResetPin(e)) => unreachable!(),
+        Err(embedded_lora_rfm95::lora::types::InitError::UnsupportedSiliconRevision) => todo!(),
+        Err(embedded_lora_rfm95::lora::types::InitError::SpiBus(e)) => todo!(),
+    };
 
     // 62.5kHz bandwidth, 4/5 coding rate, SF10 gives a bitrate of about 500bps.
     let lora_config = embedded_lora_rfm95::lora::config::Builder::builder()
@@ -21,12 +26,18 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_preamble_length(PreambleLength::L8)
         .set_spreading_factor(SpreadingFactor::S10) // High SF == Best range
         .set_sync_word(SyncWord::PRIVATE);
-    rfm95.set_config(&lora_config).unwrap();
+    match rfm95.set_config(&lora_config) {
+        Ok(_) => (),
+        Err(embedded_lora_rfm95::lora::types::ConfigError::InvalidOrUnsupportedValue) => todo!(),
+        Err(embedded_lora_rfm95::lora::types::ConfigError::SpiBus(e)) => todo!(),
+    };
 
     Radio{driver: rfm95, rx_idle: false, tx_idle: false}
 }
 
-pub type RFM95 = Rfm95Driver<Forward<SpiBus<RadioEusci>>, Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>>;
+type FwSpiBus = Forward<SpiBus<RadioEusci>>; 
+type FwSelectPin = Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>;
+pub type RFM95 = Rfm95Driver<FwSpiBus, FwSelectPin>;
 /// Top-level interface for the radio module.
 pub struct Radio {
     pub driver: RFM95,
@@ -35,10 +46,19 @@ pub struct Radio {
 }
 impl Radio {
     // TODO: Test
-    pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), &'static str> {
+    pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), SpiBusError<FwSpiBus, FwSelectPin>> {
         if self.rx_idle {
-            let timeout = self.driver.rx_timeout_max()?;
-            self.driver.start_rx(timeout)?;
+            let timeout = match self.driver.rx_timeout_max() {
+                Ok(t) => t,
+                Err(embedded_lora_rfm95::lora::types::ConfigError::InvalidOrUnsupportedValue) => todo!(),
+                Err(embedded_lora_rfm95::lora::types::ConfigError::SpiBus(e)) => Err(e)?
+            };
+            match self.driver.start_rx(timeout) {
+                Ok(_) => todo!(),
+                Err(embedded_lora_rfm95::lora::types::RxConfigError::InvalidOrUnsupportedValue) => todo!(),
+                Err(embedded_lora_rfm95::lora::types::RxConfigError::TimeoutTooLarge) => unreachable!(),
+                Err(embedded_lora_rfm95::lora::types::RxConfigError::SpiBus(e)) => Err(e)?,
+            };
             self.rx_idle = false;
         }
         match self.driver.complete_rx(buf) {
@@ -47,17 +67,27 @@ impl Radio {
                 Ok(())
             },
             Ok(None) => Err(nb::Error::WouldBlock),
-            Err("RX timeout") => {
-                let timeout = self.driver.rx_timeout_max()?;
-                self.driver.start_rx(timeout)?;
+            Err(embedded_lora_rfm95::lora::types::RxError::RxTimeout) => {
+                let timeout = match self.driver.rx_timeout_max() {
+                    Ok(t) => t,
+                    Err(embedded_lora_rfm95::lora::types::ConfigError::InvalidOrUnsupportedValue) => todo!(),
+                    Err(embedded_lora_rfm95::lora::types::ConfigError::SpiBus(e)) => Err(e)?
+                };
+                match self.driver.start_rx(timeout) {
+                    Ok(_) => todo!(),
+                    Err(embedded_lora_rfm95::lora::types::RxConfigError::InvalidOrUnsupportedValue) => todo!(),
+                    Err(embedded_lora_rfm95::lora::types::RxConfigError::TimeoutTooLarge) => unreachable!(),
+                    Err(embedded_lora_rfm95::lora::types::RxConfigError::SpiBus(e)) => Err(e)?,
+                };
                 Err(nb::Error::WouldBlock)
             },
-            Err(e) => Err(e)?,
+            Err(embedded_lora_rfm95::lora::types::RxError::CrcFailure) => todo!(),
+            Err(embedded_lora_rfm95::lora::types::RxError::SpiBus(e)) => Err(e)?,
         }
     }
 
     // TODO: Test
-    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<usize, &'static str> {
+    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<usize, TxError<FwSpiBus, FwSelectPin>> {
         if self.tx_idle {
             self.driver.start_tx(data)?;
             self.tx_idle = false;
@@ -69,14 +99,9 @@ impl Radio {
                 self.tx_idle = true;
                 Ok(n)
             },
-            Err(e) => Err(e)?,
+            Err(e) => Err(TxError::from(e))?,
         }
     }
-}
-
-pub enum RadioRecieveError {
-    RxTimeout,
-    StillRecieving,
 }
 
 use embedded_hal::blocking::delay::DelayMs;
