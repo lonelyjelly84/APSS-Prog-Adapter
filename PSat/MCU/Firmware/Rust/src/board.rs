@@ -58,7 +58,7 @@ pub fn configure() -> Board {
         .configure_with_software_cs(used.miso, used.mosi, used.sclk);
     
     // LoRa radio
-    let radio = crate::lora::new(spi, used.lora_cs, used.lora_reset, delay);
+    let Ok(radio) = crate::lora::new(spi, used.lora_cs, used.lora_reset, delay) else {panic!("LoRa radio config failed")};
 
     // GPS
     let gps = crate::gps::Gps::new(regs.E_USCI_A1, &smclk, used.gps_tx_pin, used.gps_rx_pin);

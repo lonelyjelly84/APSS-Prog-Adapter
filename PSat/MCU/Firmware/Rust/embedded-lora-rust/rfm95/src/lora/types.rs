@@ -3,6 +3,88 @@
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::SpiBus;
 
+// Error types
+
+/// Possible errors encountered during an SPI operation.
+#[derive(Debug)]
+pub enum SpiError<Bus: SpiBus, Pin: OutputPin> {
+    /// A GPIO error occurred when asserting or de-asserting the chip select pin.
+    ChipSelect(Pin::Error),
+    /// An error occurred as part of an SPI transmission
+    Bus(Bus::Error),
+}
+
+/// Error type for wrapper type conversions.
+// Since there's only one variant this could technically just be the `()` type instead, but this communicates the issue better.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConversionError {
+    InvalidOrUnsupportedValue,
+}
+
+/// Errors that may be encountered during radio initialisation.
+#[derive(Debug)]
+pub enum InitError<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> {
+    /// The module reported an unsupported revision. This can also occur if the radio module is not properly connected to the SPI bus.
+    UnsupportedSiliconRevision(u8),
+    /// A GPIO error occurred when asserting or de-asserting the reset pin.
+    ResetPin(Reset::Error),
+    /// An error occurred within an SPI operation.
+    Spi(SpiError<Bus, ChipSel>),
+}
+// Convert from SpiBusError to InitError
+impl<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> From<SpiError<Bus, ChipSel>> for InitError<Bus, Reset, ChipSel> {
+    fn from(err: SpiError<Bus, ChipSel>) -> Self {
+        InitError::Spi(err)
+    }
+}
+
+/// Possible errors when recieving a packet in single transaction mode.
+#[derive(Debug)]
+pub enum SingleRxError<Bus: SpiBus, Pin: OutputPin> {
+    /// The radio reported the specified timeout duration elapsed without recieving a packet.
+    RxTimeout,
+    /// The radio reported a CRC failure in the recieved packet.
+    CrcFailure,
+    /// An error occurred within an SPI operation.
+    Spi(SpiError<Bus, Pin>)
+}
+// Convert from SpiBusError to SingleRxError
+impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for SingleRxError<Bus, Pin> {
+    fn from(err: SpiError<Bus, Pin>) -> Self {
+        SingleRxError::Spi(err)
+    }
+}
+
+/// Possible errors when configuring packet reception.
+#[derive(Debug)]
+pub enum RxConfigError<Bus: SpiBus, Pin: OutputPin> {
+    /// An error occurred within an SPI operation.
+    Spi(SpiError<Bus, Pin>),
+    /// The timeout value was either too large to fit in an i32, or the effective timeout was less than 0 or more than 1023 LoRa symbols.
+    TimeoutTooLarge,
+}
+// Convert from SpiBusError to RxConfigError
+impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for RxConfigError<Bus, Pin> {
+    fn from(err: SpiError<Bus, Pin>) -> Self {
+        RxConfigError::Spi(err)
+    }
+}
+
+/// Possible errors when sending a packet.
+#[derive(Debug)]
+pub enum TxError<Bus: SpiBus, Pin: OutputPin> {
+    /// An error occurred within an SPI operation.
+    Spi(SpiError<Bus, Pin>),
+    /// The buffer has either zero length or is longer than the radio's buffer. 
+    InvalidBufferSize,
+}
+// Convert from SpiBusError to TxError
+impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for TxError<Bus, Pin> {
+    fn from(err: SpiError<Bus, Pin>) -> Self {
+        TxError::Spi(err)
+    }
+}
+
 /// A LoRa spreading factor
 ///
 /// # Implementation Note
@@ -29,7 +111,7 @@ pub enum SpreadingFactor {
     S12 = 12,
 }
 impl TryFrom<u8> for SpreadingFactor {
-    type Error = RadioError;
+    type Error = ConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -39,89 +121,8 @@ impl TryFrom<u8> for SpreadingFactor {
             sf if sf == Self::S10 as u8 => Ok(Self::S10),
             sf if sf == Self::S11 as u8 => Ok(Self::S11),
             sf if sf == Self::S12 as u8 => Ok(Self::S12),
-            _ => Err(RadioError::InvalidOrUnsupportedValue),
+            _ => Err(ConversionError::InvalidOrUnsupportedValue),
         }
-    }
-}
-
-/// TODO: Documentation
-#[derive(Debug)]
-pub enum SpiBusError<Bus: SpiBus, Pin: OutputPin> {
-    ChipSelect(Pin::Error),
-    Transaction(Bus::Error),
-}
-
-#[derive(Debug)]
-pub enum RadioError {
-    InvalidOrUnsupportedValue,
-}
-
-#[derive(Debug)]
-pub enum InitError<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> {
-    UnsupportedSiliconRevision,
-    ResetPin(Reset::Error),
-    SpiBus(SpiBusError<Bus, ChipSel>),
-}
-impl<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> From<SpiBusError<Bus, ChipSel>> for InitError<Bus, Reset, ChipSel> {
-    fn from(err: SpiBusError<Bus, ChipSel>) -> Self {
-        InitError::SpiBus(err)
-    }
-}
-
-#[derive(Debug)]
-pub enum ConfigError<Bus: SpiBus, Pin: OutputPin> {
-    SpiBus(SpiBusError<Bus, Pin>),
-    InvalidOrUnsupportedValue,
-}
-impl<Bus: SpiBus, Pin: OutputPin> From<RadioError> for ConfigError<Bus, Pin> {
-    fn from(_err: RadioError) -> Self {
-        ConfigError::InvalidOrUnsupportedValue
-    }
-}
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiBusError<Bus, Pin>> for ConfigError<Bus, Pin> {
-    fn from(err: SpiBusError<Bus, Pin>) -> Self {
-        ConfigError::SpiBus(err)
-    }
-}
-
-#[derive(Debug)]
-pub enum RxError<Bus: SpiBus, Pin: OutputPin> {
-    RxTimeout,
-    CrcFailure,
-    SpiBus(SpiBusError<Bus, Pin>)
-}
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiBusError<Bus, Pin>> for RxError<Bus, Pin> {
-    fn from(err: SpiBusError<Bus, Pin>) -> Self {
-        RxError::SpiBus(err)
-    }
-}
-
-#[derive(Debug)]
-pub enum RxConfigError<Bus: SpiBus, Pin: OutputPin> {
-    SpiBus(SpiBusError<Bus, Pin>),
-    InvalidOrUnsupportedValue,
-    TimeoutTooLarge,
-}
-impl<Bus: SpiBus, Pin: OutputPin> From<RadioError> for RxConfigError<Bus, Pin> {
-    fn from(_err: RadioError) -> Self {
-        RxConfigError::InvalidOrUnsupportedValue
-    }
-}
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiBusError<Bus, Pin>> for RxConfigError<Bus, Pin> {
-    fn from(err: SpiBusError<Bus, Pin>) -> Self {
-        RxConfigError::SpiBus(err)
-    }
-}
-
-#[derive(Debug)]
-pub enum TxError<Bus: SpiBus, Pin: OutputPin> {
-    SpiBus(SpiBusError<Bus, Pin>),
-    InvalidOrUnsupportedValue,
-    InvalidBufferSize,
-}
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiBusError<Bus, Pin>> for TxError<Bus, Pin> {
-    fn from(err: SpiBusError<Bus, Pin>) -> Self {
-        TxError::SpiBus(err)
     }
 }
 
@@ -155,7 +156,7 @@ pub enum Bandwidth {
     B7_8 = 0b0000,
 }
 impl TryFrom<u8> for Bandwidth {
-    type Error = RadioError;
+    type Error = ConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -169,7 +170,7 @@ impl TryFrom<u8> for Bandwidth {
             bw if bw == Self::B15_6 as u8 => Ok(Self::B15_6),
             bw if bw == Self::B10_4 as u8 => Ok(Self::B10_4),
             bw if bw == Self::B7_8 as u8 => Ok(Self::B7_8),
-            _ => Err(RadioError::InvalidOrUnsupportedValue),
+            _ => Err(ConversionError::InvalidOrUnsupportedValue),
         }
     }
 }
@@ -192,7 +193,7 @@ pub enum CodingRate {
     C4_8 = 0b100,
 }
 impl TryFrom<u8> for CodingRate {
-    type Error = RadioError;
+    type Error = ConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -200,7 +201,7 @@ impl TryFrom<u8> for CodingRate {
             cr if cr == Self::C4_6 as u8 => Ok(Self::C4_6),
             cr if cr == Self::C4_7 as u8 => Ok(Self::C4_7),
             cr if cr == Self::C4_8 as u8 => Ok(Self::C4_8),
-            _ => Err(RadioError::InvalidOrUnsupportedValue),
+            _ => Err(ConversionError::InvalidOrUnsupportedValue),
         }
     }
 }
@@ -219,13 +220,13 @@ pub enum Polarity {
     Inverted = 1,
 }
 impl TryFrom<u8> for Polarity {
-    type Error = RadioError;
+    type Error = ConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             polarity if polarity == Self::Normal as u8 => Ok(Self::Normal),
             polarity if polarity == Self::Inverted as u8 => Ok(Self::Inverted),
-            _ => Err(RadioError::InvalidOrUnsupportedValue),
+            _ => Err(ConversionError::InvalidOrUnsupportedValue),
         }
     }
 }
@@ -244,13 +245,13 @@ pub enum HeaderMode {
     Implicit = 1,
 }
 impl TryFrom<u8> for HeaderMode {
-    type Error = RadioError;
+    type Error = ConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             mode if mode == Self::Explicit as u8 => Ok(Self::Explicit),
             mode if mode == Self::Implicit as u8 => Ok(Self::Implicit),
-            _ => Err(RadioError::InvalidOrUnsupportedValue),
+            _ => Err(ConversionError::InvalidOrUnsupportedValue),
         }
     }
 }
@@ -269,13 +270,13 @@ pub enum CrcMode {
     Enabled = 1,
 }
 impl TryFrom<u8> for CrcMode {
-    type Error = RadioError;
+    type Error = ConversionError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             mode if mode == Self::Disabled as u8 => Ok(Self::Disabled),
             mode if mode == Self::Enabled as u8 => Ok(Self::Enabled),
-            _ => Err(RadioError::InvalidOrUnsupportedValue),
+            _ => Err(ConversionError::InvalidOrUnsupportedValue),
         }
     }
 }

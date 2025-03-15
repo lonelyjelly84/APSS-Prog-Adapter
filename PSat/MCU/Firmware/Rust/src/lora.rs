@@ -1,18 +1,18 @@
 #![allow(dead_code)]
 use arrayvec::ArrayVec;
-use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpiBusError, SpreadingFactor, SyncWord, TxError}, rfm95::{self, Rfm95Driver}};
+use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, RxConfigError, SingleRxError, SpiError, SpreadingFactor, SyncWord, TxError}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
 use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
 
 const LORA_FREQ_HZ: u32 = 915_000_000;
 
-pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
+pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Result<Radio, SpiError<FwSpiBus, FwSelectPin>> {
     let mut rfm95 = match Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)) {
         Ok(rfm) => rfm,
-        Err(embedded_lora_rfm95::lora::types::InitError::ResetPin(e)) => unreachable!(),
-        Err(embedded_lora_rfm95::lora::types::InitError::UnsupportedSiliconRevision) => todo!(),
-        Err(embedded_lora_rfm95::lora::types::InitError::SpiBus(e)) => todo!(),
+        Err(embedded_lora_rfm95::lora::types::InitError::ResetPin(_e)) => unreachable!(),
+        Err(embedded_lora_rfm95::lora::types::InitError::UnsupportedSiliconRevision(_ver)) => todo!(),
+        Err(embedded_lora_rfm95::lora::types::InitError::Spi(e)) => Err(e)?,
     };
 
     // 62.5kHz bandwidth, 4/5 coding rate, SF10 gives a bitrate of about 500bps.
@@ -26,13 +26,9 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_preamble_length(PreambleLength::L8)
         .set_spreading_factor(SpreadingFactor::S10) // High SF == Best range
         .set_sync_word(SyncWord::PRIVATE);
-    match rfm95.set_config(&lora_config) {
-        Ok(_) => (),
-        Err(embedded_lora_rfm95::lora::types::ConfigError::InvalidOrUnsupportedValue) => todo!(),
-        Err(embedded_lora_rfm95::lora::types::ConfigError::SpiBus(e)) => todo!(),
-    };
+    rfm95.set_config(&lora_config)?;
 
-    Radio{driver: rfm95, rx_idle: false, tx_idle: false}
+    Ok( Radio{driver: rfm95, rx_idle: false, tx_idle: false} )
 }
 
 type FwSpiBus = Forward<SpiBus<RadioEusci>>; 
@@ -46,19 +42,10 @@ pub struct Radio {
 }
 impl Radio {
     // TODO: Test
-    pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), SpiBusError<FwSpiBus, FwSelectPin>> {
+    pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), SpiError<FwSpiBus, FwSelectPin>> {
         if self.rx_idle {
-            let timeout = match self.driver.rx_timeout_max() {
-                Ok(t) => t,
-                Err(embedded_lora_rfm95::lora::types::ConfigError::InvalidOrUnsupportedValue) => todo!(),
-                Err(embedded_lora_rfm95::lora::types::ConfigError::SpiBus(e)) => Err(e)?
-            };
-            match self.driver.start_rx(timeout) {
-                Ok(_) => todo!(),
-                Err(embedded_lora_rfm95::lora::types::RxConfigError::InvalidOrUnsupportedValue) => todo!(),
-                Err(embedded_lora_rfm95::lora::types::RxConfigError::TimeoutTooLarge) => unreachable!(),
-                Err(embedded_lora_rfm95::lora::types::RxConfigError::SpiBus(e)) => Err(e)?,
-            };
+            let timeout = self.driver.rx_timeout_max()?;
+            if let Err(RxConfigError::Spi(e)) = self.driver.start_rx(timeout) { Err(e)? }
             self.rx_idle = false;
         }
         match self.driver.complete_rx(buf) {
@@ -67,22 +54,13 @@ impl Radio {
                 Ok(())
             },
             Ok(None) => Err(nb::Error::WouldBlock),
-            Err(embedded_lora_rfm95::lora::types::RxError::RxTimeout) => {
-                let timeout = match self.driver.rx_timeout_max() {
-                    Ok(t) => t,
-                    Err(embedded_lora_rfm95::lora::types::ConfigError::InvalidOrUnsupportedValue) => todo!(),
-                    Err(embedded_lora_rfm95::lora::types::ConfigError::SpiBus(e)) => Err(e)?
-                };
-                match self.driver.start_rx(timeout) {
-                    Ok(_) => todo!(),
-                    Err(embedded_lora_rfm95::lora::types::RxConfigError::InvalidOrUnsupportedValue) => todo!(),
-                    Err(embedded_lora_rfm95::lora::types::RxConfigError::TimeoutTooLarge) => unreachable!(),
-                    Err(embedded_lora_rfm95::lora::types::RxConfigError::SpiBus(e)) => Err(e)?,
-                };
+            Err(embedded_lora_rfm95::lora::types::SingleRxError::RxTimeout) => {
+                let timeout = self.driver.rx_timeout_max()?;
+                if let Err(RxConfigError::Spi(e)) = self.driver.start_rx(timeout) { Err(e)? }
                 Err(nb::Error::WouldBlock)
             },
-            Err(embedded_lora_rfm95::lora::types::RxError::CrcFailure) => todo!(),
-            Err(embedded_lora_rfm95::lora::types::RxError::SpiBus(e)) => Err(e)?,
+            Err(SingleRxError::CrcFailure) => todo!(),
+            Err(SingleRxError::Spi(e)) => Err(e)?,
         }
     }
 
@@ -161,12 +139,12 @@ pub mod tests {
         loop {
             match board.radio.recieve(&mut buf) {
                 Ok(_) => {
-                    let signal_strength = board.radio.driver.get_packet_strength().unwrap();
-                    let rssi = board.radio.driver.get_rssi().unwrap(); 
-                    let snr = board.radio.driver.get_packet_snr().unwrap(); 
+                    let Ok(signal_strength) = board.radio.driver.get_packet_strength() else {continue};
+                    let Ok(rssi) = board.radio.driver.get_rssi() else {continue};
+                    let Ok(snr) = board.radio.driver.get_packet_snr() else {continue};
                     crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(&buf).unwrap(), signal_strength, rssi, snr);
                 },
-                Err(nb::Error::Other(e)) => panic!("{}", e),
+                Err(nb::Error::Other(_e)) => (),
                 Err(nb::Error::WouldBlock) => (),
             }
 

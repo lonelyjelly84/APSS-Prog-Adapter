@@ -1,6 +1,6 @@
 //! RFM95 SPI connection
 
-use crate::lora::types::SpiBusError;
+use crate::lora::types::SpiError;
 use crate::rfm95::registers::Register;
 use core::fmt::{Debug, Formatter};
 use embedded_hal::digital::OutputPin;
@@ -33,7 +33,7 @@ where
     }
 
     /// Reads a RFM95 register via SPI
-    pub fn read<T>(&mut self, register: T) -> Result<u8, SpiBusError<Bus, Select>>
+    pub fn read<T>(&mut self, register: T) -> Result<u8, SpiError<Bus, Select>>
     where
         T: Register,
     {
@@ -42,7 +42,7 @@ where
         Ok((register_value & register.mask()) >> register.offset())
     }
     /// Updates a RFM95 register via SPI
-    pub fn write<T>(&mut self, register: T, value: u8) -> Result<(), SpiBusError<Bus, Select>>
+    pub fn write<T>(&mut self, register: T, value: u8) -> Result<(), SpiError<Bus, Select>>
     where
         T: Register,
     {
@@ -62,15 +62,15 @@ where
     }
 
     /// Performs RFM95-specific SPI register access
-    fn register(&mut self, operation: u8, address: u8, payload: u8) -> Result<u8, SpiBusError<Bus, Select>> {
+    fn register(&mut self, operation: u8, address: u8, payload: u8) -> Result<u8, SpiError<Bus, Select>> {
         // Build command
         let address = address & 0b0111_1111;
         let mut command = [operation | address, payload];
 
         // Do transaction
-        self.select.set_low().map_err(SpiBusError::ChipSelect)?;
-        self.bus.transfer_in_place(&mut command).map_err(SpiBusError::Transaction)?;
-        self.select.set_high().map_err(SpiBusError::ChipSelect)?;
+        self.select.set_low().map_err(SpiError::ChipSelect)?;
+        self.bus.transfer_in_place(&mut command).map_err(SpiError::Bus)?;
+        self.select.set_high().map_err(SpiError::ChipSelect)?;
 
         // SPI debug callback
         #[cfg(feature = "debug")]
