@@ -6,12 +6,20 @@ use embedded_hal::spi::SpiBus;
 // Error types
 
 /// Possible errors encountered during an SPI operation.
-#[derive(Debug)]
 pub enum SpiError<Bus: SpiBus, Pin: OutputPin> {
     /// A GPIO error occurred when asserting or de-asserting the chip select pin.
     ChipSelect(Pin::Error),
     /// An error occurred as part of an SPI transmission
     Bus(Bus::Error),
+}
+// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
+impl<Bus: SpiBus, Pin: OutputPin> core::fmt::Debug for SpiError<Bus, Pin> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            SpiError::ChipSelect(err) =>  f.debug_tuple("ChipSelect").field(&err).finish(),
+            SpiError::Bus(err) =>         f.debug_tuple("Bus").field(&err).finish(),
+        }
+    }
 }
 
 /// Error type for wrapper type conversions.
@@ -22,7 +30,6 @@ pub enum ConversionError {
 }
 
 /// Errors that may be encountered during radio initialisation.
-#[derive(Debug)]
 pub enum InitError<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> {
     /// The module reported an unsupported revision. This can also occur if the radio module is not properly connected to the SPI bus.
     UnsupportedSiliconRevision(u8),
@@ -37,26 +44,44 @@ impl<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> From<SpiError<Bus, ChipS
         InitError::Spi(err)
     }
 }
+// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
+impl<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> core::fmt::Debug for InitError<Bus, Reset, ChipSel> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            InitError::UnsupportedSiliconRevision(ver)  => f.debug_tuple("UnsupportedSiliconRevision").field(ver).finish(),
+            InitError::ResetPin(err)                    => f.debug_tuple("ResetPin").field(&err).finish(),
+            InitError::Spi(spi_error)                   => write!(f, "{:?}", spi_error),
+        }
+    }
+}
 
 /// Possible errors when recieving a packet in single transaction mode.
-#[derive(Debug)]
-pub enum SingleRxError<Bus: SpiBus, Pin: OutputPin> {
+pub enum SingleRxError<Bus: SpiBus, ChipSel: OutputPin> {
     /// The radio reported the specified timeout duration elapsed without recieving a packet.
     RxTimeout,
     /// The radio reported a CRC failure in the recieved packet.
     CrcFailure,
     /// An error occurred within an SPI operation.
-    Spi(SpiError<Bus, Pin>)
+    Spi(SpiError<Bus, ChipSel>)
 }
 // Convert from SpiBusError to SingleRxError
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for SingleRxError<Bus, Pin> {
-    fn from(err: SpiError<Bus, Pin>) -> Self {
+impl<Bus: SpiBus, ChipSel: OutputPin> From<SpiError<Bus, ChipSel>> for SingleRxError<Bus, ChipSel> {
+    fn from(err: SpiError<Bus, ChipSel>) -> Self {
         SingleRxError::Spi(err)
+    }
+}
+// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
+impl<Bus: SpiBus, ChipSel: OutputPin> core::fmt::Debug for SingleRxError<Bus, ChipSel> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            SingleRxError::RxTimeout        => write!(f, "RxTimeout"),
+            SingleRxError::CrcFailure       => write!(f, "CrcFailure"),
+            SingleRxError::Spi(spi_error)   => write!(f, "{:?}", spi_error),
+        }
     }
 }
 
 /// Possible errors when configuring packet reception.
-#[derive(Debug)]
 pub enum RxConfigError<Bus: SpiBus, Pin: OutputPin> {
     /// An error occurred within an SPI operation.
     Spi(SpiError<Bus, Pin>),
@@ -69,9 +94,17 @@ impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for RxConfigError<Bus
         RxConfigError::Spi(err)
     }
 }
+// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
+impl<Bus: SpiBus, ChipSel: OutputPin> core::fmt::Debug for RxConfigError<Bus, ChipSel> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            RxConfigError::Spi(spi_error) => write!(f, "{:?}", spi_error),
+            RxConfigError::TimeoutTooLarge => write!(f, "TimeoutTooLarge"),
+        }
+    }
+}
 
 /// Possible errors when sending a packet.
-#[derive(Debug)]
 pub enum TxError<Bus: SpiBus, Pin: OutputPin> {
     /// An error occurred within an SPI operation.
     Spi(SpiError<Bus, Pin>),
@@ -82,6 +115,15 @@ pub enum TxError<Bus: SpiBus, Pin: OutputPin> {
 impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for TxError<Bus, Pin> {
     fn from(err: SpiError<Bus, Pin>) -> Self {
         TxError::Spi(err)
+    }
+}
+// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
+impl<Bus: SpiBus, ChipSel: OutputPin> core::fmt::Debug for TxError<Bus, ChipSel> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            TxError::Spi(spi_error) => write!(f, "{:?}", spi_error),
+            TxError::InvalidBufferSize => write!(f, "InvalidBufferSize"),
+        }
     }
 }
 

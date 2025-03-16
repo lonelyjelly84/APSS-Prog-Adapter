@@ -42,8 +42,8 @@ impl Radio {
     // TODO: Test
     pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), RxError> {
         if self.rx_idle {
-            let timeout = self.driver.rx_timeout_max().unwrap_or_else(|_| unreachable!());
-            self.driver.start_rx(timeout).unwrap_or_else(|_| unreachable!());
+            let timeout = self.driver.rx_timeout_max().unwrap();
+            self.driver.start_rx(timeout).unwrap();
             self.rx_idle = false;
         }
         match self.driver.complete_rx(buf) {
@@ -53,8 +53,8 @@ impl Radio {
             },
             Ok(None) => Err(nb::Error::WouldBlock),
             Err(embedded_lora_rfm95::lora::types::SingleRxError::RxTimeout) => {
-                let timeout = self.driver.rx_timeout_max().unwrap_or_else(|_| unreachable!());
-                self.driver.start_rx(timeout).unwrap_or_else(|_| unreachable!());
+                let timeout = self.driver.rx_timeout_max().unwrap();
+                self.driver.start_rx(timeout).unwrap();
                 Err(nb::Error::WouldBlock)
             },
             Err(SingleRxError::CrcFailure) => Err(nb::Error::Other(RxError::CrcFailure)),
