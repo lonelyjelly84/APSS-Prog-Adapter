@@ -1,5 +1,7 @@
 //! RFM95 driver for LoRa operations
 
+use crate::err;
+use crate::error::Error;
 use crate::lora::airtime;
 use crate::lora::config::Config;
 use crate::lora::types::*;
@@ -14,18 +16,18 @@ use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::SpiBus;
 
 /// Raw SPI command interface for RFM95
-pub struct Rfm95Driver<Bus, Pin>
+pub struct Rfm95Driver<Bus, Select>
 where
     Bus: SpiBus,
-    Pin: OutputPin,
+    Select: OutputPin,
 {
     /// The SPI connection to the RFM95 radio
-    spi: Rfm95Connection<Bus, Pin>,
+    spi: Rfm95Connection<Bus, Select>,
 }
-impl<Bus, Pin> Rfm95Driver<Bus, Pin>
+impl<Bus, Select> Rfm95Driver<Bus, Select>
 where
     Bus: SpiBus,
-    Pin: OutputPin,
+    Select: OutputPin,
 {
     /// Supported silicon revisions for compatibility check
     #[cfg(not(feature = "debug"))]
@@ -57,17 +59,17 @@ where
     /// # Important
     /// The RFM95 modem is initialized to LoRa-mode and put to standby. All other configurations are left untouched, so
     /// you probably want to configure the modem initially (also see [`Self::set_config`]).
-    pub fn new<T, R>(bus: Bus, select: Pin, mut reset: R, mut timer: T) -> Result<Self, InitError<Bus, R, Pin>>
+    pub fn new<R, T>(bus: Bus, select: Select, mut reset: R, mut timer: T) -> Result<Self, Error>
     where
         R: OutputPin,
         T: DelayNs,
     {
         // Pull reset to low and wait until the reset is triggered
-        reset.set_low().map_err(InitError::ResetPin)?;
+        reset.set_low().map_err(|_| err!(eio: "Failed to pull reset line to low"))?;
         timer.delay_ms(1);
 
         // Pull reset to high again and give the chip some time to boot
-        reset.set_high().map_err(InitError::ResetPin)?;
+        reset.set_high().map_err(|_| err!(eio: "Failed to pull reset line to high"))?;
         timer.delay_ms(10);
 
         // Validate chip revision to assure the protocol matches
@@ -75,10 +77,10 @@ where
         #[cfg(not(feature = "debug"))]
         {
             // Get chip revision
-            let silicon_revision = wire.read(RegVersion).map_err(|e| InitError::Spi(e))?;
+            let silicon_revision = wire.read(RegVersion)?;
             let true = Self::SUPPORTED_SILICON_REVISIONS.contains(&silicon_revision) else {
                 // Raise an error here since other revisions may be incompatible
-                return Err(InitError::UnsupportedSiliconRevision(silicon_revision));
+                return Err(err!(einval: "Unsupported silicon revision"));
             };
         }
 
@@ -98,7 +100,7 @@ where
     }
 
     /// Applies the given config (useful for initialization)
-    pub fn set_config(&mut self, config: &Config) -> Result<(), SpiError<Bus, Pin>> {
+    pub fn set_config(&mut self, config: &Config) -> Result<(), Error> {
         self.set_spreading_factor(config.spreading_factor())?;
         self.set_bandwidth(config.bandwidth())?;
         self.set_coding_rate(config.coding_rate())?;
@@ -112,14 +114,12 @@ where
     }
 
     /// The current spreading factor
-    #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation.")]
-    pub fn spreading_factor(&mut self) -> Result<SpreadingFactor, SpiError<Bus, Pin>> {
+    pub fn spreading_factor(&mut self) -> Result<SpreadingFactor, Error> {
         let spreading_factor = self.spi.read(RegModemConfig2SpreadingFactor)?;
-        #[allow(clippy::unwrap_used, reason = "Values from registers are known to be Ok(), besides SF6 which can't be set using this library.")]
-        Ok(SpreadingFactor::try_from(spreading_factor).unwrap())
+        SpreadingFactor::try_from(spreading_factor)
     }
     /// Set the spreading factor
-    pub fn set_spreading_factor<T>(&mut self, spreading_factor: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_spreading_factor<T>(&mut self, spreading_factor: T) -> Result<(), Error>
     where
         T: Into<SpreadingFactor>,
     {
@@ -135,14 +135,12 @@ where
     }
 
     /// The current bandwidth
-    #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn bandwidth(&mut self) -> Result<Bandwidth, SpiError<Bus, Pin>> {
+    pub fn bandwidth(&mut self) -> Result<Bandwidth, Error> {
         let bandwidth = self.spi.read(RegModemConfig1Bw)?;
-        #[allow(clippy::unwrap_used, reason = "Values from registers are known to be Ok()")]
-        Ok(Bandwidth::try_from(bandwidth).unwrap())
+        Bandwidth::try_from(bandwidth)
     }
     /// Sets the bandwidth
-    pub fn set_bandwidth<T>(&mut self, bandwidth: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_bandwidth<T>(&mut self, bandwidth: T) -> Result<(), Error>
     where
         T: Into<Bandwidth>,
     {
@@ -158,14 +156,12 @@ where
     }
 
     /// The current coding rate
-    #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn coding_rate(&mut self) -> Result<CodingRate, SpiError<Bus, Pin>> {
+    pub fn coding_rate(&mut self) -> Result<CodingRate, Error> {
         let coding_rate = self.spi.read(RegModemConfig1CodingRate)?;
-        #[allow(clippy::unwrap_used, reason = "Values from registers are known to be Ok()")]
-        Ok(CodingRate::try_from(coding_rate).unwrap())
+        CodingRate::try_from(coding_rate)
     }
     /// Sets the coding rate
-    pub fn set_coding_rate<T>(&mut self, coding_rate: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_coding_rate<T>(&mut self, coding_rate: T) -> Result<(), Error>
     where
         T: Into<CodingRate>,
     {
@@ -174,14 +170,12 @@ where
     }
 
     /// The current IQ polarity
-    #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn polarity(&mut self) -> Result<Polarity, SpiError<Bus, Pin>> {
+    pub fn polarity(&mut self) -> Result<Polarity, Error> {
         let polarity = self.spi.read(RegInvertIQ)?;
-        #[allow(clippy::unwrap_used, reason = "Values from registers are known to be Ok()")]
-        Ok(Polarity::try_from(polarity).unwrap())
+        Polarity::try_from(polarity)
     }
     /// Sets the IQ polarity
-    pub fn set_polarity<T>(&mut self, polarity: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_polarity<T>(&mut self, polarity: T) -> Result<(), Error>
     where
         T: Into<Polarity>,
     {
@@ -190,14 +184,12 @@ where
     }
 
     /// The current header mode
-    #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn header_mode(&mut self) -> Result<HeaderMode, SpiError<Bus, Pin>> {
+    pub fn header_mode(&mut self) -> Result<HeaderMode, Error> {
         let header_mode = self.spi.read(RegModemConfig1ImplicitHeaderModeOn)?;
-        #[allow(clippy::unwrap_used, reason = "Values from registers are known to be Ok()")]
-        Ok(HeaderMode::try_from(header_mode).unwrap())
+        HeaderMode::try_from(header_mode)
     }
     /// Sets the header mode
-    pub fn set_header_mode<T>(&mut self, header_mode: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_header_mode<T>(&mut self, header_mode: T) -> Result<(), Error>
     where
         T: Into<HeaderMode>,
     {
@@ -206,14 +198,12 @@ where
     }
 
     /// The current CRC mode
-    #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn crc_mode(&mut self) -> Result<CrcMode, SpiError<Bus, Pin>> {
+    pub fn crc_mode(&mut self) -> Result<CrcMode, Error> {
         let crc_mode = self.spi.read(RegModemConfig2RxPayloadCrcOn)?;
-        #[allow(clippy::unwrap_used, reason = "Values from registers are known to be Ok()")]
-        Ok(CrcMode::try_from(crc_mode).unwrap())
+        CrcMode::try_from(crc_mode)
     }
     /// Sets the CRC mode
-    pub fn set_crc_mode<T>(&mut self, crc: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_crc_mode<T>(&mut self, crc: T) -> Result<(), Error>
     where
         T: Into<CrcMode>,
     {
@@ -222,12 +212,12 @@ where
     }
 
     /// The current sync word
-    pub fn sync_word(&mut self) -> Result<SyncWord, SpiError<Bus, Pin>> {
+    pub fn sync_word(&mut self) -> Result<SyncWord, Error> {
         let sync_word = self.spi.read(RegSyncWord)?;
         Ok(SyncWord::new(sync_word))
     }
     /// Sets the sync word
-    pub fn set_sync_word<T>(&mut self, sync_word: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_sync_word<T>(&mut self, sync_word: T) -> Result<(), Error>
     where
         T: Into<SyncWord>,
     {
@@ -236,7 +226,7 @@ where
     }
 
     /// The current preamble length
-    pub fn preamble_len(&mut self) -> Result<PreambleLength, SpiError<Bus, Pin>> {
+    pub fn preamble_len(&mut self) -> Result<PreambleLength, Error> {
         // Read registers
         let preamble_len_msb = self.spi.read(RegPreambleMsb)?;
         let preamble_len_lsb = self.spi.read(RegPreambleLsb)?;
@@ -246,7 +236,7 @@ where
         Ok(PreambleLength::new(preamble_len))
     }
     /// Sets the preamble length
-    pub fn set_preamble_len<T>(&mut self, len: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_preamble_len<T>(&mut self, len: T) -> Result<(), Error>
     where
         T: Into<PreambleLength>,
     {
@@ -256,7 +246,7 @@ where
     }
 
     /// The current frequency
-    pub fn frequency(&mut self) -> Result<Frequency, SpiError<Bus, Pin>> {
+    pub fn frequency(&mut self) -> Result<Frequency, Error> {
         // Read frequency from registers
         let frequency_msb = self.spi.read(RegFrMsb)?;
         let frequency_mid = self.spi.read(RegFrMid)?;
@@ -270,7 +260,7 @@ where
         Ok(Frequency::hz(frequency))
     }
     /// Sets the frequency
-    pub fn set_frequency<T>(&mut self, frequency: T) -> Result<(), SpiError<Bus, Pin>>
+    pub fn set_frequency<T>(&mut self, frequency: T) -> Result<(), Error>
     where
         T: Into<Frequency>,
     {
@@ -298,11 +288,11 @@ where
     /// # Non-Blocking
     /// This functions schedules the TX operation and returns immediately. To check if the TX operation is done, use
     /// [`Self::complete_tx`].
-    pub fn start_tx(&mut self, data: &[u8]) -> Result<(), TxError<Bus, Pin>> {
+    pub fn start_tx(&mut self, data: &[u8]) -> Result<(), Error> {
         // Validate input length
         let 1..=RFM95_FIFO_SIZE = data.len() else {
             // The message is empty or too long
-            return Err(TxError::InvalidBufferSize);
+            return Err(err!(einval: "Invalid TX data length"));
         };
 
         // Copy packet into FIFO...
@@ -326,7 +316,7 @@ where
     ///
     /// # Non-Blocking
     /// This function is non-blocking. If the TX operation is not done yet, it returns `Ok(None)`.
-    pub fn complete_tx(&mut self) -> Result<Option<usize>, SpiError<Bus, Pin>> {
+    pub fn complete_tx(&mut self) -> Result<Option<usize>, Error> {
         // Check for TX done
         let 0b1 = self.spi.read(RegIrqFlagsTxDone)? else {
             // The TX operation has not been completed yet
@@ -350,7 +340,7 @@ where
     /// the maximum timeout, we take the configured [`Self::spreading_factor`] and [`Self::bandwidth`], and get the
     /// duration of a single symbol via [`crate::lora::airtime::symbol_airtime`]. The maximum timeout is the duration of
     /// a single symbol, multiplied with `1023`.
-    pub fn rx_timeout_max(&mut self) -> Result<Duration, SpiError<Bus, Pin>> {
+    pub fn rx_timeout_max(&mut self) -> Result<Duration, Error> {
         // Get current config
         let spreading_factor = self.spreading_factor()?;
         let bandwidth = self.bandwidth()?;
@@ -368,7 +358,7 @@ where
     /// # Maximum Timeout
     /// The RFM95 timeout counter works by counting symbols, and is thus dependent on the configured spreading factor
     /// and bandwidth. See also [`Self::rx_timeout_max`].
-    pub fn start_rx(&mut self, timeout: Duration) -> Result<(), RxConfigError<Bus, Pin>> {
+    pub fn start_rx(&mut self, timeout: Duration) -> Result<(), Error> {
         // Get the current symbol airtime in microseconds
         let spreading_factor = self.spreading_factor()?;
         let bandwidth = self.bandwidth()?;
@@ -376,10 +366,10 @@ where
         let symbol_airtime_micros = symbol_airtime.as_micros() as i32;
 
         // Compute the raw timeout
-        let timeout_micros = i32::try_from(timeout.as_micros()).map_err(|_| RxConfigError::TimeoutTooLarge)?;
+        let timeout_micros = i32::try_from(timeout.as_micros()).map_err(|_| err!(einval: "Timeout is too long"))?;
         let timeout_symbols @ 0..1024 = airtime::ceildiv(timeout_micros, symbol_airtime_micros) as u32 else {
             // This timeout is too large to be configured
-            return Err(RxConfigError::TimeoutTooLarge);
+            return Err(err!(einval: "Effective timeout is too large"));
         };
 
         // Configure the timeout and reset the address pointer
@@ -410,15 +400,15 @@ where
     /// # Timeout or CRC errors
     /// If the receive operation times out or the received message is corrupt,
     #[allow(clippy::missing_panics_doc, reason = "The panic should never occur during regular operation")]
-    pub fn complete_rx(&mut self, buf: &mut [u8]) -> Result<Option<usize>, SingleRxError<Bus, Pin>> {
+    pub fn complete_rx(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Error> {
         // Check for errors
         let 0b0 = self.spi.read(RegIrqFlagsRxTimeout)? else {
             // The RX operation has timeouted
-            return Err(SingleRxError::RxTimeout);
+            return Err(err!(etimedout: "RX timeout"));
         };
         let 0b0 = self.spi.read(RegIrqFlagsPayloadCrcError)? else {
             // The RX operation has failed
-            return Err(SingleRxError::CrcFailure);
+            return Err(err!(ebadmsg: "RX CRC error"));
         };
 
         // Check for RX done
@@ -447,49 +437,9 @@ where
         Ok(Some(len as usize))
     }
 
-    /// When operating in the high frequency range the RSSI register values are offset by this much. 
-    const HF_RSSI_OFFSET: i16 = -157;
-
-    /// When operating in the low frequency range the RSSI register values are offset by this much. 
-    const LF_RSSI_OFFSET: i16 = -164;
-    
-    /// The cutoff frequency that separates the high and low frequency ranges. Anything below this value is LF.
-    const HF_LF_BOUNDARY_FREQ: Frequency = Frequency::hz(779_000_000);
-
-    /// Get the signal strength of the last recieved packet.
-    /// 
-    /// Unlike RSSI, this accounts for LoRa's ability to recieve packets below the noise floor.
-    pub fn get_packet_strength(&mut self) -> Result<i16, SpiError<Bus, Pin>> {
-        let offset = if self.frequency()? >= Self::HF_LF_BOUNDARY_FREQ {Self::HF_RSSI_OFFSET} else {Self::LF_RSSI_OFFSET};
-        let snr = self.get_packet_snr()?;
-        if snr >= 0 {
-            Ok( self.spi.read(RegRssiValue)? as i16 + offset )
-        }
-        else {
-            Ok( self.spi.read(RegPktRssiValue)? as i16 + snr as i16 + offset )
-        }
-    }
-
-    /// Get a Relative Signal Strength Indicator (RSSI) of the last recieved packet.
-    pub fn get_rssi(&mut self) -> Result<i16, SpiError<Bus, Pin>> {
-        let offset = if self.frequency()? > Self::HF_LF_BOUNDARY_FREQ {Self::HF_RSSI_OFFSET} else {Self::LF_RSSI_OFFSET};
-        if self.get_packet_snr()? >= 0 {
-            Ok( self.spi.read(RegPktRssiValue)? as i16 * 16/15 + offset )
-        }
-        else {
-            Ok( self.spi.read(RegRssiValue)? as i16 + offset )
-        }
-    }
-
-    /// Get the Signal to Noise Ratio (SNR) of the last recieved packet.
-    pub fn get_packet_snr(&mut self) -> Result<i8, SpiError<Bus, Pin>> {
-        // The value is stored in two's complement form in the register, so the cast to i8 is fine
-        Ok( (self.spi.read(RegPktSnrValue)? as i8 ) / 4)
-    }
-
     /// Dumps all used registers; usefule for debugging purposes
     #[cfg(feature = "debug")]
-    pub fn dump_registers(&mut self) -> Result<[u8; REGISTER_MAX as usize + 1], SpiError<Bus, Pin>> {
+    pub fn dump_registers(&mut self) -> Result<[u8; REGISTER_MAX as usize + 1], Error> {
         // A dynamic register for dumping purposes
         struct DynamicRegister(u8);
         impl Register for DynamicRegister {
@@ -509,7 +459,7 @@ where
     }
     /// Dumps the entire FIFO contents
     #[cfg(feature = "debug")]
-    pub fn dump_fifo(&mut self) -> Result<[u8; RFM95_FIFO_SIZE], SpiError<Bus, Pin>> {
+    pub fn dump_fifo(&mut self) -> Result<[u8; RFM95_FIFO_SIZE], Error> {
         // Save FIFO position
         let fifo_position = self.spi.read(RegFifoAddrPtr)?;
 
@@ -526,10 +476,10 @@ where
         Ok(dump)
     }
 }
-impl<Bus, Pin> Debug for Rfm95Driver<Bus, Pin>
+impl<Bus, Select> Debug for Rfm95Driver<Bus, Select>
 where
     Bus: SpiBus,
-    Pin: OutputPin,
+    Select: OutputPin,
 {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         f.debug_struct("Rfm95Driver").field("spi", &self.spi).finish()

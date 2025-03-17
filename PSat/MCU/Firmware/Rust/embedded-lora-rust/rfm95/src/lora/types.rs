@@ -1,131 +1,7 @@
 //! Small wrappers for type safety
 
-use embedded_hal::digital::OutputPin;
-use embedded_hal::spi::SpiBus;
-
-// Error types
-
-/// Possible errors encountered during an SPI operation.
-pub enum SpiError<Bus: SpiBus, Pin: OutputPin> {
-    /// A GPIO error occurred when asserting or de-asserting the chip select pin.
-    ChipSelect(Pin::Error),
-    /// An error occurred as part of an SPI transmission
-    Bus(Bus::Error),
-}
-// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
-impl<Bus: SpiBus, Pin: OutputPin> core::fmt::Debug for SpiError<Bus, Pin> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            SpiError::ChipSelect(err) =>  f.debug_tuple("ChipSelect").field(&err).finish(),
-            SpiError::Bus(err) =>         f.debug_tuple("Bus").field(&err).finish(),
-        }
-    }
-}
-
-/// Error type for wrapper type conversions.
-// Since there's only one variant this could technically just be the `()` type instead, but this communicates the issue better.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ConversionError {
-    InvalidOrUnsupportedValue,
-}
-
-/// Errors that may be encountered during radio initialisation.
-pub enum InitError<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> {
-    /// The module reported an unsupported revision. This can also occur if the radio module is not properly connected to the SPI bus.
-    UnsupportedSiliconRevision(u8),
-    /// A GPIO error occurred when asserting or de-asserting the reset pin.
-    ResetPin(Reset::Error),
-    /// An error occurred within an SPI operation.
-    Spi(SpiError<Bus, ChipSel>),
-}
-// Convert from SpiBusError to InitError
-impl<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> From<SpiError<Bus, ChipSel>> for InitError<Bus, Reset, ChipSel> {
-    fn from(err: SpiError<Bus, ChipSel>) -> Self {
-        InitError::Spi(err)
-    }
-}
-// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
-impl<Bus: SpiBus, Reset: OutputPin, ChipSel: OutputPin> core::fmt::Debug for InitError<Bus, Reset, ChipSel> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            InitError::UnsupportedSiliconRevision(ver)  => f.debug_tuple("UnsupportedSiliconRevision").field(ver).finish(),
-            InitError::ResetPin(err)                    => f.debug_tuple("ResetPin").field(&err).finish(),
-            InitError::Spi(spi_error)                   => write!(f, "{:?}", spi_error),
-        }
-    }
-}
-
-/// Possible errors when recieving a packet in single transaction mode.
-pub enum SingleRxError<Bus: SpiBus, ChipSel: OutputPin> {
-    /// The radio reported the specified timeout duration elapsed without recieving a packet.
-    RxTimeout,
-    /// The radio reported a CRC failure in the recieved packet.
-    CrcFailure,
-    /// An error occurred within an SPI operation.
-    Spi(SpiError<Bus, ChipSel>)
-}
-// Convert from SpiBusError to SingleRxError
-impl<Bus: SpiBus, ChipSel: OutputPin> From<SpiError<Bus, ChipSel>> for SingleRxError<Bus, ChipSel> {
-    fn from(err: SpiError<Bus, ChipSel>) -> Self {
-        SingleRxError::Spi(err)
-    }
-}
-// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
-impl<Bus: SpiBus, ChipSel: OutputPin> core::fmt::Debug for SingleRxError<Bus, ChipSel> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            SingleRxError::RxTimeout        => write!(f, "RxTimeout"),
-            SingleRxError::CrcFailure       => write!(f, "CrcFailure"),
-            SingleRxError::Spi(spi_error)   => write!(f, "{:?}", spi_error),
-        }
-    }
-}
-
-/// Possible errors when configuring packet reception.
-pub enum RxConfigError<Bus: SpiBus, Pin: OutputPin> {
-    /// An error occurred within an SPI operation.
-    Spi(SpiError<Bus, Pin>),
-    /// The timeout value was either too large to fit in an i32, or the effective timeout was less than 0 or more than 1023 LoRa symbols.
-    TimeoutTooLarge,
-}
-// Convert from SpiBusError to RxConfigError
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for RxConfigError<Bus, Pin> {
-    fn from(err: SpiError<Bus, Pin>) -> Self {
-        RxConfigError::Spi(err)
-    }
-}
-// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
-impl<Bus: SpiBus, ChipSel: OutputPin> core::fmt::Debug for RxConfigError<Bus, ChipSel> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            RxConfigError::Spi(spi_error) => write!(f, "{:?}", spi_error),
-            RxConfigError::TimeoutTooLarge => write!(f, "TimeoutTooLarge"),
-        }
-    }
-}
-
-/// Possible errors when sending a packet.
-pub enum TxError<Bus: SpiBus, Pin: OutputPin> {
-    /// An error occurred within an SPI operation.
-    Spi(SpiError<Bus, Pin>),
-    /// The buffer has either zero length or is longer than the radio's buffer. 
-    InvalidBufferSize,
-}
-// Convert from SpiBusError to TxError
-impl<Bus: SpiBus, Pin: OutputPin> From<SpiError<Bus, Pin>> for TxError<Bus, Pin> {
-    fn from(err: SpiError<Bus, Pin>) -> Self {
-        TxError::Spi(err)
-    }
-}
-// Manual implementation ensures that even if Bus and Pin don't implement Debug users can still unwrap these errors
-impl<Bus: SpiBus, ChipSel: OutputPin> core::fmt::Debug for TxError<Bus, ChipSel> {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            TxError::Spi(spi_error) => write!(f, "{:?}", spi_error),
-            TxError::InvalidBufferSize => write!(f, "InvalidBufferSize"),
-        }
-    }
-}
+use crate::err;
+use crate::error::Error;
 
 /// A LoRa spreading factor
 ///
@@ -153,7 +29,7 @@ pub enum SpreadingFactor {
     S12 = 12,
 }
 impl TryFrom<u8> for SpreadingFactor {
-    type Error = ConversionError;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -163,7 +39,7 @@ impl TryFrom<u8> for SpreadingFactor {
             sf if sf == Self::S10 as u8 => Ok(Self::S10),
             sf if sf == Self::S11 as u8 => Ok(Self::S11),
             sf if sf == Self::S12 as u8 => Ok(Self::S12),
-            _ => Err(ConversionError::InvalidOrUnsupportedValue),
+            _ => Err(err!(einval: "Invalid or unsupported spreading factor")),
         }
     }
 }
@@ -198,7 +74,7 @@ pub enum Bandwidth {
     B7_8 = 0b0000,
 }
 impl TryFrom<u8> for Bandwidth {
-    type Error = ConversionError;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -212,7 +88,7 @@ impl TryFrom<u8> for Bandwidth {
             bw if bw == Self::B15_6 as u8 => Ok(Self::B15_6),
             bw if bw == Self::B10_4 as u8 => Ok(Self::B10_4),
             bw if bw == Self::B7_8 as u8 => Ok(Self::B7_8),
-            _ => Err(ConversionError::InvalidOrUnsupportedValue),
+            _ => Err(err!(einval: "Invalid or unsupported bandwidth")),
         }
     }
 }
@@ -220,7 +96,7 @@ impl TryFrom<u8> for Bandwidth {
 /// The coding rate for forward error correction
 ///
 /// # Representation
-/// The coding rate can be represented as `u8`, where the value is the difference to the overhead divisor (i.e.
+/// The spreading factor can be represented as `u8`, where the value is the difference to the overhead divisor (i.e.
 /// `4/5 => 1`, `4/7 => 3`). The representation is compatible to the modem representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
@@ -235,7 +111,7 @@ pub enum CodingRate {
     C4_8 = 0b100,
 }
 impl TryFrom<u8> for CodingRate {
-    type Error = ConversionError;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -243,7 +119,7 @@ impl TryFrom<u8> for CodingRate {
             cr if cr == Self::C4_6 as u8 => Ok(Self::C4_6),
             cr if cr == Self::C4_7 as u8 => Ok(Self::C4_7),
             cr if cr == Self::C4_8 as u8 => Ok(Self::C4_8),
-            _ => Err(ConversionError::InvalidOrUnsupportedValue),
+            _ => Err(err!(einval: "Invalid coding rate")),
         }
     }
 }
@@ -251,7 +127,7 @@ impl TryFrom<u8> for CodingRate {
 /// The IQ polarity
 ///
 /// # Representation
-/// The polarity can be represented as `u8`, where `Normal => 0`, `Inverted => 1`. The representation is
+/// The spreading factor can be represented as `u8`, where `Normal => 0`, `Inverted => 1`. The representation is
 /// compatible to the modem representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -262,13 +138,13 @@ pub enum Polarity {
     Inverted = 1,
 }
 impl TryFrom<u8> for Polarity {
-    type Error = ConversionError;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             polarity if polarity == Self::Normal as u8 => Ok(Self::Normal),
             polarity if polarity == Self::Inverted as u8 => Ok(Self::Inverted),
-            _ => Err(ConversionError::InvalidOrUnsupportedValue),
+            _ => Err(err!(einval: "Invalid IQ polarity value")),
         }
     }
 }
@@ -276,7 +152,7 @@ impl TryFrom<u8> for Polarity {
 /// The LoRa header mode
 ///
 /// # Representation
-/// The header mode can be represented as `u8`, where `Explicit => 0`, `Implicit => 1`. The representation is
+/// The spreading factor can be represented as `u8`, where `Explicit => 0`, `Implicit => 1`. The representation is
 /// compatible to the modem representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -287,13 +163,13 @@ pub enum HeaderMode {
     Implicit = 1,
 }
 impl TryFrom<u8> for HeaderMode {
-    type Error = ConversionError;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             mode if mode == Self::Explicit as u8 => Ok(Self::Explicit),
             mode if mode == Self::Implicit as u8 => Ok(Self::Implicit),
-            _ => Err(ConversionError::InvalidOrUnsupportedValue),
+            _ => Err(err!(einval: "Invalid header mode")),
         }
     }
 }
@@ -301,7 +177,7 @@ impl TryFrom<u8> for HeaderMode {
 /// The CRC configuration
 ///
 /// # Representation
-/// The CRC mode can be represented as `u8`, where `Disabled => 0`, `Enabled => 1`. The representation is
+/// The spreading factor can be represented as `u8`, where `Disabled => 0`, `Enabled => 1`. The representation is
 /// compatible to the modem representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -312,13 +188,13 @@ pub enum CrcMode {
     Enabled = 1,
 }
 impl TryFrom<u8> for CrcMode {
-    type Error = ConversionError;
+    type Error = Error;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             mode if mode == Self::Disabled as u8 => Ok(Self::Disabled),
             mode if mode == Self::Enabled as u8 => Ok(Self::Enabled),
-            _ => Err(ConversionError::InvalidOrUnsupportedValue),
+            _ => Err(err!(einval: "Invalid CRC mode")),
         }
     }
 }
