@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use arrayvec::ArrayVec;
-use embedded_lora_rfm95::{error::Error, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
+use embedded_lora_rfm95::{error::{IoError, RxCompleteError, TxStartError}, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
 use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
@@ -8,11 +8,9 @@ use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
 const LORA_FREQ_HZ: u32 = 915_000_000;
 
 pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
-    use embedded_lora_rfm95::error::ErrorKind::*;
     let mut rfm95 = match Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)) {
         Ok(rfm) => rfm,
-        Err(Error{kind: InvalidValue}) => panic!("Radio reports invalid silicon revision. Is the beacon connected?"),
-        _ => unreachable!(), // Only other non-Infallible error is SPI buffer overrun. The RFM95 driver owns the SPI bus, so short of a bug in the library this is unreachable.
+        Err(_e) => panic!("Radio reports invalid silicon revision. Is the beacon connected?"),
     };
 
     // 62.5kHz bandwidth, 4/5 coding rate, SF10 gives a bitrate of about 500bps.
@@ -48,20 +46,19 @@ impl Radio {
             self.rx_idle = false;
         }
 
-        use embedded_lora_rfm95::error::ErrorKind::*;
         match self.driver.complete_rx(buf) {
             Ok(None) => Err(nb::Error::WouldBlock),
             Ok(Some(_n)) => {
                 self.rx_idle = true;
                 Ok(())
             },
-            Err(Error{kind: InvalidMessage}) => Err(nb::Error::Other(RxError::CrcFailure)),
-            Err(Error{kind: Timeout}) => {
+            Err(RxCompleteError::InvalidMessageError(_)) => Err(nb::Error::Other(RxError::CrcFailure)),
+            Err(RxCompleteError::TimeoutError(_)) => {
                 let timeout = self.driver.rx_timeout_max().unwrap();
                 self.driver.start_rx(timeout).unwrap();
                 Err(nb::Error::WouldBlock)
             },
-            _ => unreachable!()
+            Err(RxCompleteError::IoError(_)) => unreachable!()
         }
     }
 
@@ -69,11 +66,10 @@ impl Radio {
     /// On the first invocation `data` is copied into the radio's buffer. Changes to `data` will have no effect until the method returns `Ok()` and the method is called again.
     pub fn transmit(&mut self, data: &[u8]) -> nb::Result<usize, TxError> {
         if self.tx_idle {
-            use embedded_lora_rfm95::error::ErrorKind::*;
             match self.driver.start_tx(data) {
                 Ok(_) => (),
-                Err(Error{kind: InvalidValue}) => Err(nb::Error::Other(TxError::InvalidBufferSize))?,
-                _ => unreachable!(),
+                Err(TxStartError::InvalidArgumentError(_)) => Err(nb::Error::Other(TxError::InvalidBufferSize))?,
+                Err(TxStartError::IoError(_)) => unreachable!(),
             };
             self.tx_idle = false;
         }
@@ -84,7 +80,7 @@ impl Radio {
                 self.tx_idle = true;
                 Ok(n)
             },
-            Err(_spi_err) => unreachable!(),
+            Err(IoError{}) => unreachable!(),
         }
     }
 }
