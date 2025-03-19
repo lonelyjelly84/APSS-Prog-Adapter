@@ -1,18 +1,20 @@
 #![allow(dead_code)]
 use arrayvec::ArrayVec;
+use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_lora_rfm95::{error::{IoError, RxCompleteError, TxStartError}, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
-use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
+use embedded_hal_compat::{eh1_0::delay::DelayNs, markers::ForwardOutputPin, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
 use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
 
 const LORA_FREQ_HZ: u32 = 915_000_000;
 
 pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
-    let mut rfm95 = match Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)) {
+    let device: ExclusiveDeviceType = embedded_hal_bus::spi::ExclusiveDevice::new(spi.forward(), cs_pin.forward(), DelayWrapper(delay)).unwrap();
+    let mut rfm95 = match Rfm95Driver::<ExclusiveDeviceType>::new_from_device(device, reset_pin.forward(), &mut DelayWrapper(delay)) {
         Ok(rfm) => rfm,
         Err(_e) => panic!("Radio reports invalid silicon revision. Is the beacon connected?"),
     };
-
+    
     // 62.5kHz bandwidth, 4/5 coding rate, SF10 gives a bitrate of about 500bps.
     let lora_config = embedded_lora_rfm95::lora::config::Builder::builder()
         .set_bandwidth(Bandwidth::B62_5) // lower bandwidth == longer range, but very low bandwidths can suffer from clock source tolerance issues
@@ -28,9 +30,11 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
 
     Radio{driver: rfm95, rx_idle: false, tx_idle: false}
 }
-type FwSpiBus = Forward<SpiBus<RadioEusci>>; 
-type FwSelectPin = Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>;
-pub type RFM95 = Rfm95Driver<FwSpiBus, FwSelectPin>;
+
+type ForwardSpiBus = Forward<SpiBus<RadioEusci>, ()>;
+type ForwardCsPin = Forward<Pin<P4, Pin4, Output>, ForwardOutputPin>;
+type ExclusiveDeviceType = ExclusiveDevice<ForwardSpiBus, ForwardCsPin, DelayWrapper>;
+type RFM95 = Rfm95Driver<ExclusiveDeviceType>;
 /// Top-level interface for the radio module.
 pub struct Radio {
     pub driver: RFM95,
@@ -95,7 +99,7 @@ pub enum TxError {
 
 use embedded_hal::blocking::delay::DelayMs;
 // The radio library uses a different version of embedded_hal, so we need to write some wrappers.
-struct DelayWrapper(Delay);
+pub struct DelayWrapper(Delay);
 impl DelayNs for DelayWrapper {
     fn delay_ms(&mut self, ms: u32) {
         if ms < (u16::MAX as u32) {

@@ -15,21 +15,47 @@ use core::fmt::{Debug, Formatter};
 use core::time::Duration;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
-use embedded_hal::spi::SpiBus;
+use embedded_hal::spi::SpiDevice;
+use embedded_hal_bus::spi::ExclusiveDevice;
 
 /// Raw SPI command interface for RFM95
-pub struct Rfm95Driver<Bus, Select>
+pub struct Rfm95Driver<Device>
 where
-    Bus: SpiBus,
-    Select: OutputPin,
+    Device: SpiDevice,
 {
     /// The SPI connection to the RFM95 radio
-    spi: Rfm95Connection<Bus, Select>,
+    spi: Rfm95Connection<Device>,
 }
-impl<Bus, Select> Rfm95Driver<Bus, Select>
-where
-    Bus: SpiBus,
+impl<Bus, Select, Delay> Rfm95Driver<ExclusiveDevice<Bus, Select, Delay>> 
+where 
+    Bus: embedded_hal::spi::SpiBus,
     Select: OutputPin,
+    Delay: DelayNs+Clone,
+    {
+
+    /// Creates a new raw SPI command interface for RFM95 from an SpiBus
+    ///
+    /// # Blocking
+    /// This function blocks for at least `11ms` plus additional time for the modem transactions. If you have tight
+    /// scheduling requirements, you probably want to initialize this driver before entering your main event loop.
+    ///
+    /// # Important
+    /// The RFM95 modem is initialized to LoRa-mode and put to standby. All other configurations are left untouched, so
+    /// you probably want to configure the modem initially (also see [`Self::set_config`]).
+    pub fn new<Reset>(bus: Bus, select: Select, reset: Reset, mut timer: Delay) -> Result<Self, IoError>
+    where
+        Reset: OutputPin,
+    {
+        let device = ExclusiveDevice::new(bus, select, timer.clone())
+            .map_err(|_| err!(IoError, "Failed to pull chip select line to high"))?;
+
+        Self::new_from_device(device, reset, &mut timer)
+    }
+}
+
+impl<Device> Rfm95Driver<Device>
+where
+    Device: SpiDevice,
 {
     /// Supported silicon revisions for compatibility check
     #[cfg(not(feature = "debug"))]
@@ -52,7 +78,7 @@ where
     /// The pre-assembled register value for the operation mode register to start a single LoRa RX reception
     const REG_OPMODE_MODE_RXSINGLE: u8 = 0b110;
 
-    /// Creates a new raw SPI command interface for RFM95
+    /// Creates a new raw SPI command interface for RFM95 from an SpiDevice
     ///
     /// # Blocking
     /// This function blocks for at least `11ms` plus additional time for the modem transactions. If you have tight
@@ -61,7 +87,7 @@ where
     /// # Important
     /// The RFM95 modem is initialized to LoRa-mode and put to standby. All other configurations are left untouched, so
     /// you probably want to configure the modem initially (also see [`Self::set_config`]).
-    pub fn new<R, T>(bus: Bus, select: Select, mut reset: R, mut timer: T) -> Result<Self, IoError>
+    pub fn new_from_device<R, T>(device: Device, mut reset: R, timer: &mut T) -> Result<Self, IoError>
     where
         R: OutputPin,
         T: DelayNs,
@@ -75,7 +101,7 @@ where
         timer.delay_ms(10);
 
         // Validate chip revision to assure the protocol matches
-        let mut wire = Rfm95Connection::init(bus, select);
+        let mut wire = Rfm95Connection::init(device);
         #[cfg(not(feature = "debug"))]
         {
             // Get chip revision
@@ -480,10 +506,9 @@ where
         Ok(dump)
     }
 }
-impl<Bus, Select> Debug for Rfm95Driver<Bus, Select>
+impl<Device> Debug for Rfm95Driver<Device>
 where
-    Bus: SpiBus,
-    Select: OutputPin,
+    Device: SpiDevice,
 {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         f.debug_struct("Rfm95Driver").field("spi", &self.spi).finish()
