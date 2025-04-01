@@ -34,7 +34,8 @@ fn main() -> ! {
                 println!("Time: {}, Lat: {}, Long: {}, Fix type: {:?}, Num sats: {}, Altitude: {}", 
                     results.utc_time, results.latitude, results.longitude, results.fix_type, results.num_satellites, results.altitude_msl
                 );
-                let Ok(_) = nb::block!(board.radio.transmit(&[results.num_satellites])) else { continue };
+                board.radio.transmit_start(&[results.num_satellites]).unwrap();
+                let _ = nb::block!(board.radio.transmit_is_complete());
             },
             Err(GgaParseError::NoFix) => (),
             Err(GgaParseError::SerialError(_)) => (),
