@@ -15,7 +15,9 @@ ufmt = "0.2"
 ufmt-utils = "0.2"
 
 embedded-hal-compat = "0.13"
-embedded-lora-rfm95 = { path = "./embedded-lora-rust/rfm95" } # For now we use a custom version of the library that exposes RSSI and SNR levels
+embedded-lora-rfm95 = "0.3"
+embedded-hal-bus = {version = "0.3", default-features = false, features = ["portable-atomic"]}
+portable-atomic = "1.11"
 
 arrayvec = {version = "0.7", default-features = false }
 

@@ -1,15 +1,23 @@
 #![allow(dead_code)]
+use core::time::Duration;
+
 use arrayvec::ArrayVec;
-use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
-use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
+use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_lora_rfm95::{error::{IoError, RxCompleteError, TxStartError}, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
+use embedded_hal_compat::{eh1_0::delay::DelayNs, markers::ForwardOutputPin, Forward, ForwardCompat};
 use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
+use nb::Error::{WouldBlock, Other};
 use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
 
 const LORA_FREQ_HZ: u32 = 915_000_000;
 
 pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
-    let mut rfm95 = Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)).unwrap();
-
+    let device: ExclusiveDeviceType = embedded_hal_bus::spi::ExclusiveDevice::new(spi.forward(), cs_pin.forward(), DelayWrapper(delay)).unwrap();
+    let mut rfm95 = match Rfm95Driver::<ExclusiveDeviceType>::new(device, reset_pin.forward(), &mut DelayWrapper(delay)) {
+        Ok(rfm) => rfm,
+        Err(_e) => panic!("Radio reports invalid silicon revision. Is the beacon connected?"),
+    };
+    
     // 62.5kHz bandwidth, 4/5 coding rate, SF10 gives a bitrate of about 500bps.
     let lora_config = embedded_lora_rfm95::lora::config::Builder::builder()
         .set_bandwidth(Bandwidth::B62_5) // lower bandwidth == longer range, but very low bandwidths can suffer from clock source tolerance issues
@@ -21,67 +29,76 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_preamble_length(PreambleLength::L8)
         .set_spreading_factor(SpreadingFactor::S10) // High SF == Best range
         .set_sync_word(SyncWord::PRIVATE);
-    rfm95.set_config(&lora_config).unwrap();
+    rfm95.set_config(&lora_config).unwrap_or_else(|_| unreachable!()); // Compat layer doesn't support Debug :(
 
-    Radio{driver: rfm95, rx_idle: false, tx_idle: false}
+    Radio{driver: rfm95}
 }
 
-pub type RFM95 = Rfm95Driver<Forward<SpiBus<RadioEusci>>, Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>>;
+type ForwardSpiBus = Forward<SpiBus<RadioEusci>, ()>;
+type ForwardCsPin = Forward<Pin<P4, Pin4, Output>, ForwardOutputPin>;
+type ExclusiveDeviceType = ExclusiveDevice<ForwardSpiBus, ForwardCsPin, DelayWrapper>;
+type RFM95 = Rfm95Driver<ExclusiveDeviceType>;
 /// Top-level interface for the radio module.
 pub struct Radio {
     pub driver: RFM95,
-    rx_idle: bool,
-    tx_idle: bool,
 }
 impl Radio {
-    // TODO: Test
-    pub fn recieve(&mut self, buf: &mut ArrayVec<u8, { rfm95::RFM95_FIFO_SIZE }>) -> nb::Result<(), &'static str> {
-        if self.rx_idle {
-            let timeout = self.driver.rx_timeout_max()?;
-            self.driver.start_rx(timeout)?;
-            self.rx_idle = false;
-        }
-        match self.driver.complete_rx(buf) {
-            Ok(Some(_)) => {
-                self.rx_idle = true;
-                Ok(())
-            },
-            Ok(None) => Err(nb::Error::WouldBlock),
-            Err("RX timeout") => {
-                let timeout = self.driver.rx_timeout_max()?;
-                self.driver.start_rx(timeout)?;
-                Err(nb::Error::WouldBlock)
-            },
-            Err(e) => Err(e)?,
+    /// Begin transmission and return immediately. Check whether the transmission is complete by calling `transmit_is_complete()`.
+    pub fn transmit_start(&mut self, data: &[u8]) -> Result<(), TxError>{
+        match self.driver.start_tx(data) {
+            Ok(()) => Ok(()), 
+            Err(TxStartError::InvalidArgumentError(_)) => Err(TxError::InvalidBufferSize),
+            Err(TxStartError::IoError(_)) => Err(TxError::IoError), 
         }
     }
 
-    // TODO: Test
-    pub fn transmit(&mut self, data: &[u8]) -> nb::Result<usize, &'static str> {
-        if self.tx_idle {
-            self.driver.start_tx(data)?;
-            self.tx_idle = false;
+    /// Check whether the radio has finished sending.
+    pub fn transmit_is_complete(&mut self) -> nb::Result<(), IoError> {
+        match self.driver.complete_tx(){
+            Ok(None) => Err(WouldBlock),    // Still sending
+            Ok(_) => Ok(()),                // Sending complete
+            Err(e) => Err(Other(e)),
         }
+    }
+    /// Tell the radio to listen for a packet and return immediately. Check whether anything was recieved by calling `recieve_is_complete()`.
+    /// 
+    /// A timeout value is optional, if none is provided the maximum timeout is used. You should prepare to deal with timeouts.
+    pub fn recieve_start(&mut self, timeout: Option<Duration>) {
+        let timeout = match timeout {
+            Some(t) => t,
+            None => self.driver.rx_timeout_max().unwrap(),
+        };
+        self.driver.start_rx(timeout).unwrap();
+    }
 
-        match self.driver.complete_tx() {
-            Ok(None) => Err(nb::Error::WouldBlock),  // Still sending
-            Ok(Some(n)) => {                         // Sending complete
-                self.tx_idle = true;
-                Ok(n)
-            },
-            Err(e) => Err(e)?,
+    /// Check whether the radio has recieved a packet. If so, returns the packet as a slice of bytes.
+    /// 
+    /// If not, returns either `StillRecieving` or `RxTimeout`. In the timeout case you should call `recieve_start()` again.
+    pub fn recieve_is_complete(&mut self, buf: &mut ArrayVec<u8, {rfm95::RFM95_FIFO_SIZE}>) -> nb::Result<(), RxCompleteError> {
+        match self.driver.complete_rx(buf) {
+            Ok(Some(_n)) => Ok(()),
+            Ok(None) => Err(WouldBlock),
+            Err(e) => Err(Other(e)),
         }
     }
 }
 
-pub enum RadioRecieveError {
-    RxTimeout,
-    StillRecieving,
+#[derive(Debug)]
+pub enum RxError {
+    CrcFailure,
+    Timeout,
+    IoError,
+}
+
+#[derive(Debug)]
+pub enum TxError {
+    InvalidBufferSize,
+    IoError,
 }
 
 use embedded_hal::blocking::delay::DelayMs;
 // The radio library uses a different version of embedded_hal, so we need to write some wrappers.
-struct DelayWrapper(Delay);
+pub struct DelayWrapper(Delay);
 impl DelayNs for DelayWrapper {
     fn delay_ms(&mut self, ms: u32) {
         if ms < (u16::MAX as u32) {
@@ -112,21 +129,30 @@ pub mod tests {
     pub fn range_test_tx(mut board: crate::board::Board) -> ! {
         let mut current_time = Time::default();
         board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
+        board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
         loop {
-            let bytes = [
-                current_time.hours / 10 + b'0', 
-                current_time.hours % 10 + b'0', 
-                b':', 
-                current_time.minutes / 10 + b'0', 
-                current_time.minutes % 10 + b'0', 
-                b':', 
-                current_time.seconds / 10 + b'0', 
-                current_time.seconds % 10 + b'0'];
-            let _ = board.radio.transmit(bytes.as_slice());
-            nb::block!(board.timer_b0.wait()).ok();
-            current_time.increment();
-            board.gpio.green_led.toggle();
+            if board.radio.transmit_is_complete().is_ok() {
+                board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
+            }
+
+            if board.timer_b0.wait().is_ok() {
+                current_time.increment();
+                board.gpio.green_led.toggle();
+            }
         }
+    }
+
+    fn time_to_bytes(time: &Time) -> [u8;8] {
+        [
+            time.hours / 10 + b'0', 
+            time.hours % 10 + b'0', 
+            b':', 
+            time.minutes / 10 + b'0', 
+            time.minutes % 10 + b'0', 
+            b':', 
+            time.seconds / 10 + b'0', 
+            time.seconds % 10 + b'0'
+        ]
     }
 
     pub fn range_test_rx(mut board: crate::board::Board) -> ! {
@@ -134,15 +160,11 @@ pub mod tests {
         let mut current_time = Time::default();
         board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
         loop {
-            match board.radio.recieve(&mut buf) {
-                Ok(_) => {
-                    let signal_strength = board.radio.driver.get_packet_strength().unwrap();
-                    let rssi = board.radio.driver.get_rssi().unwrap(); 
-                    let snr = board.radio.driver.get_packet_snr().unwrap(); 
-                    crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(&buf).unwrap(), signal_strength, rssi, snr);
-                },
-                Err(nb::Error::Other(e)) => panic!("{}", e),
-                Err(nb::Error::WouldBlock) => (),
+            if board.radio.recieve_is_complete(&mut buf).is_ok() {
+                let Ok(signal_strength) = board.radio.driver.get_packet_strength() else {continue};
+                let Ok(rssi) = board.radio.driver.get_packet_rssi() else {continue};
+                let Ok(snr) = board.radio.driver.get_packet_snr() else {continue};
+                crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(&buf).unwrap(), signal_strength, rssi, snr);
             }
 
             if board.timer_b0.wait().is_ok() {

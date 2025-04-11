@@ -1,8 +1,0 @@
-{
-    "rust-analyzer.checkOnSave.allTargets": false,
-    "rust-analyzer.checkOnSave.target": "thumbv6m-none-eabi",
-    "[rust]": {
-        "editor.formatOnSave": true
-    },
-    "C_Cpp.errorSquiggles": "Disabled"
-}
