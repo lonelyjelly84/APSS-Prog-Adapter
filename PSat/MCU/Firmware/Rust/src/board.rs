@@ -1,14 +1,18 @@
 // An example board support package for a stack using the MCU and Beacon boards.
 
 #![allow(dead_code)]
+use core::cell::RefCell;
+use embedded_hal_compat::{Forward, ForwardCompat};
+use msp430fr2355::E_USCI_B1;
 use msp430fr2x5x_hal::{
     adc::{Adc, AdcConfig, ClockDivider, Predivider, Resolution, SampleTime, SamplingRate}, 
     clock::{Clock, ClockConfig, DcoclkFreqSel, MclkDiv, SmclkDiv}, delay::Delay, fram::Fram, 
     gpio::{Batch, Floating, Input, Pin, Pin0, Pin1, Pin2, Pin3, Pin4, Pin5, Pin6, Pin7, P1, P2, P3, P4, P5, P6}, 
     i2c::{GlitchFilter, I2CBusConfig, I2cBus}, 
-    pac::{E_USCI_B0, PMM, TB0}, pmm::Pmm, pwm::TimerConfig, spi::SpiBusConfig, timer::{Timer, TimerParts3}, watchdog::Wdt
+    pac::{E_USCI_B0, PMM, TB0}, pmm::Pmm, pwm::TimerConfig, spi::{SpiBus, SpiBusConfig}, timer::{Timer, TimerParts3}, watchdog::Wdt
 };
 use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin};
+use static_cell::StaticCell;
 use crate::{gps::Gps, lora::Radio, pin_mappings::*, println};
 
 /// Top-level object representing the board.
@@ -29,6 +33,10 @@ impl Board {
         self.adc.read_voltage_mv(&mut self.gpio.half_vbat, 3300).unwrap() * 2
     }
 }
+
+// Note that the LoRa library requires embedded_hal v1.0, whereas our MSP430 driver is still on v0.2.7
+// So we use the 'forward' functionality from embedded_hal_compat to automatically implement the v1.0 traits using the v0.2.7 version
+pub type FwSpiBus = Forward<SpiBus<E_USCI_B1>>;
 
 /// Call this function ONCE at the beginning of your program.
 /// Printing won't work until this function is called.
@@ -53,12 +61,21 @@ pub fn configure() -> Board {
     println!("Serial init"); // Like this!
     
     // SPI, used by the LoRa radio
-    let spi = SpiBusConfig::new(regs.E_USCI_B1, embedded_hal::spi::MODE_0, true)
-        .use_smclk(&smclk, 32)
+    const SPI_FREQ_HZ: u32 = 250_000; // 250kHz is arbitrary
+    let clk_div = (smclk.freq() / SPI_FREQ_HZ) as u16;
+    let spi_bus = SpiBusConfig::new(regs.E_USCI_B1, embedded_hal::spi::MODE_0, true)
+        .use_smclk(&smclk, clk_div) 
         .configure_with_software_cs(used.miso, used.mosi, used.sclk);
     
+    // In case we have multiple devices that need to share the SPI bus, we wrap in a RefCell to tell compiler
+    // we will have multiple mutable references but will ensure that we only ever use one at a time 
+    // (MSP430 is single threaded, so this is equivalent to not sending in an interrupt).
+    // StaticCell is just so we can get a 'static reference and don't have to add generic lifetimes to everything.
+    static SPI: StaticCell<RefCell<FwSpiBus>> = StaticCell::new();
+    let spi_ref: &'static _ = SPI.init(RefCell::new(spi_bus.forward()));
+    
     // LoRa radio
-    let radio = crate::lora::new(spi, used.lora_cs, used.lora_reset, delay);
+    let radio = crate::lora::new(spi_ref, used.lora_cs, used.lora_reset, delay);
 
     // GPS
     let gps = crate::gps::Gps::new(regs.E_USCI_A1, &smclk, used.gps_tx_pin, used.gps_rx_pin);
@@ -68,8 +85,8 @@ pub fn configure() -> Board {
     let timer_b0 = timer_parts.timer;
 
     // I2C
-    const I2C_FREQ: u32 = 100_000; //Hz
-    let clk_div = (smclk.freq() / I2C_FREQ) as u16;
+    const I2C_FREQ_HZ: u32 = 100_000;
+    let clk_div = (smclk.freq() / I2C_FREQ_HZ) as u16;
     let i2c = I2CBusConfig::new(
         regs.E_USCI_B0, 
         GlitchFilter::Max50ns)

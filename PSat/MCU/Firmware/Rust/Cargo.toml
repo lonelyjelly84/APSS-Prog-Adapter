@@ -20,7 +20,7 @@ embedded-hal-bus = {version = "0.3", default-features = false, features = ["port
 portable-atomic = "1.11"
 
 arrayvec = {version = "0.7", default-features = false }
-
+static_cell = {version = "2.1"}
 fixed = "1.29"
 
 [profile.release]

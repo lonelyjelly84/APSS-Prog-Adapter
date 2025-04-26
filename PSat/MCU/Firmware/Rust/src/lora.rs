@@ -1,19 +1,19 @@
 #![allow(dead_code)]
-use core::time::Duration;
+use core::{cell::RefCell, time::Duration};
 
 use arrayvec::ArrayVec;
-use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_hal_bus::spi::RefCellDevice;
 use embedded_lora_rfm95::{error::{IoError, RxCompleteError, TxStartError}, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, markers::ForwardOutputPin, Forward, ForwardCompat};
-use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
+use msp430fr2x5x_hal::delay::Delay;
 use nb::Error::{WouldBlock, Other};
-use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
+use crate::{board::FwSpiBus, pin_mappings::{RadioCsPin, RadioResetPin}};
 
 const LORA_FREQ_HZ: u32 = 915_000_000;
 
-pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
-    let device: ExclusiveDeviceType = embedded_hal_bus::spi::ExclusiveDevice::new(spi.forward(), cs_pin.forward(), DelayWrapper(delay)).unwrap();
-    let mut rfm95 = match Rfm95Driver::<ExclusiveDeviceType>::new(device, reset_pin.forward(), &mut DelayWrapper(delay)) {
+pub fn new(spi_ref: &'static RefCell<FwSpiBus>, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
+    let radio_spi: SPIDevice = RefCellDevice::new(spi_ref, cs_pin.forward(), crate::lora::DelayWrapper(delay)).unwrap();
+    let mut rfm95 = match Rfm95Driver::new(radio_spi, reset_pin.forward(), &mut DelayWrapper(delay)) {
         Ok(rfm) => rfm,
         Err(_e) => panic!("Radio reports invalid silicon revision. Is the beacon connected?"),
     };
@@ -29,15 +29,14 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_preamble_length(PreambleLength::L8)
         .set_spreading_factor(SpreadingFactor::S10) // High SF == Best range
         .set_sync_word(SyncWord::PRIVATE);
-    rfm95.set_config(&lora_config).unwrap_or_else(|_| unreachable!()); // Compat layer doesn't support Debug :(
+    rfm95.set_config(&lora_config).unwrap();
 
     Radio{driver: rfm95}
 }
 
-type ForwardSpiBus = Forward<SpiBus<RadioEusci>, ()>;
-type ForwardCsPin = Forward<Pin<P4, Pin4, Output>, ForwardOutputPin>;
-type ExclusiveDeviceType = ExclusiveDevice<ForwardSpiBus, ForwardCsPin, DelayWrapper>;
-type RFM95 = Rfm95Driver<ExclusiveDeviceType>;
+type FwCsPin = Forward<RadioCsPin, ForwardOutputPin>;
+type SPIDevice = RefCellDevice<'static, FwSpiBus, FwCsPin, DelayWrapper>;
+type RFM95 = Rfm95Driver<SPIDevice>;
 /// Top-level interface for the radio module.
 pub struct Radio {
     pub driver: RFM95,
