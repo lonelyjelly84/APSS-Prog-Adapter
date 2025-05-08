@@ -1,9 +1,9 @@
 ----------------------------------------------------------------------------------------------------------------------------------
-NCDrill File Report For: Beacon.PcbDoc   8/05/2025  6:12:16 pm
+NCDrill File Report For: Beacon.PcbDoc   8/05/2025  7:18:58 pm
 ----------------------------------------------------------------------------------------------------------------------------------
 
 Layer Pair : Top Layer to Bottom Layer
-ASCII RoundHoles File : Beacon.TXT
+ASCII RoundHoles File : Beacon-2.0.3-NC Drill.TXT
 
 Tool       Hole Size               Hole Tolerance               Hole Type       Hole Count   Plated         Tool Travel
 ----------------------------------------------------------------------------------------------------------------------------------

@@ -465,12 +465,20 @@ DocumentPath=Fabrication Files\Pick Place\Pick Place for Beacon.txt
 DItemRevisionGUID=
 
 [Parameter1]
-Name=ProjectName
-Value=Hello
+Name=DesignName
+Value=Beacon
 
 [Parameter2]
-Name=version
+Name=BoardRevision
 Value=2.0.3
+
+[Parameter3]
+Name=Designer
+Value=Ross P
+
+[Parameter4]
+Name=Project
+Value=PSAT
 
 [Configuration1]
 Name=Sources

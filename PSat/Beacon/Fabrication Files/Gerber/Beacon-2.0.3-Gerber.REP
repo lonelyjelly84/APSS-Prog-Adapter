@@ -1,73 +1,107 @@
 *************************************************************
-FileName = Beacon.GBR
+FileName = Beacon-2.0.3-Gerber.GBR
 AutoAperture = True
 *************************************************************
-Generating : Board Outline
-      File : Beacon.GM5
+Generating : Bottom Layer
+      File : Beacon-2.0.3-Gerber.GBL
 
-    Adding Layer      : Board Outline
+    Adding Layer      : Bottom Layer
+
+    Adding Layer      : Multi-Layer
 
 
 Used DCodes :
+    D10
+    D53
+    D56
+    D57
+    D58
+    D59
+    D60
+*************************************************************
+
+*************************************************************
+Generating : Top Layer
+      File : Beacon-2.0.3-Gerber.GTL
+
+    Adding Layer      : Top Layer
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D12
+    D21
+    D22
+    D23
+    D24
+    D25
+    D26
+    D27
+    D28
+    D29
+    D37
+    D38
+    D51
+    D52
+    D53
+    D54
+    D55
+    D56
+    D57
+    D58
+    D59
+    D60
+*************************************************************
+
+*************************************************************
+Generating : Top Overlay
+      File : Beacon-2.0.3-Gerber.GTO
+
+    Adding Layer      : Top Overlay
+
+
+Used DCodes :
+    D10
     D11
+    D12
+    D13
+    D14
+    D15
+    D16
+    D17
 *************************************************************
 
 *************************************************************
-Generating : Keep-Out Layer
-      File : Beacon.GKO
+Generating : Top Paste
+      File : Beacon-2.0.3-Gerber.GTP
 
-    Adding Layer      : Keep-Out Layer
+    Adding Layer      : Top Paste
 
-
-Used DCodes :
-*************************************************************
-
-*************************************************************
-Generating : Bottom Overlay
-      File : Beacon.GBO
-
-    Adding Layer      : Bottom Overlay
-
-
-Used DCodes :
-*************************************************************
-
-*************************************************************
-Generating : Bottom Paste
-      File : Beacon.GBP
-
-    Adding Layer      : Bottom Paste
-
-    Adding Layer      : Bottom Layer
+    Adding Layer      : Top Layer
 
     Adding Layer      : Multi-Layer
 
 
 Used DCodes :
-*************************************************************
-
-*************************************************************
-Generating : Bottom Solder
-      File : Beacon.GBS
-
-    Adding Layer      : Bottom Solder
-
-    Adding Layer      : Bottom Layer
-
-    Adding Layer      : Multi-Layer
-
-
-Used DCodes :
-    D44
-    D45
-    D46
-    D47
-    D48
+    D18
+    D19
+    D20
+    D21
+    D22
+    D23
+    D24
+    D25
+    D26
+    D27
+    D28
+    D29
 *************************************************************
 
 *************************************************************
 Generating : Top Solder
-      File : Beacon.GTS
+      File : Beacon-2.0.3-Gerber.GTS
 
     Adding Layer      : Top Solder
 
@@ -104,52 +138,41 @@ Used DCodes :
 *************************************************************
 
 *************************************************************
-Generating : Top Paste
-      File : Beacon.GTP
+Generating : Bottom Overlay
+      File : Beacon-2.0.3-Gerber.GBO
 
-    Adding Layer      : Top Paste
-
-    Adding Layer      : Top Layer
-
-    Adding Layer      : Multi-Layer
+    Adding Layer      : Bottom Overlay
 
 
 Used DCodes :
-    D18
-    D19
-    D20
-    D21
-    D22
-    D23
-    D24
-    D25
-    D26
-    D27
-    D28
-    D29
 *************************************************************
 
 *************************************************************
-Generating : Top Overlay
-      File : Beacon.GTO
+Generating : Keep-Out Layer
+      File : Beacon-2.0.3-Gerber.GKO
 
-    Adding Layer      : Top Overlay
+    Adding Layer      : Keep-Out Layer
 
 
 Used DCodes :
-    D10
+*************************************************************
+
+*************************************************************
+Generating : Board Outline
+      File : Beacon-2.0.3-Gerber.GM5
+
+    Adding Layer      : Board Outline
+
+
+Used DCodes :
     D11
-    D12
-    D13
-    D14
-    D15
-    D16
-    D17
 *************************************************************
 
 *************************************************************
-Generating : Bottom Layer
-      File : Beacon.GBL
+Generating : Bottom Solder
+      File : Beacon-2.0.3-Gerber.GBS
+
+    Adding Layer      : Bottom Solder
 
     Adding Layer      : Bottom Layer
 
@@ -157,53 +180,30 @@ Generating : Bottom Layer
 
 
 Used DCodes :
-    D10
-    D53
-    D56
-    D57
-    D58
-    D59
-    D60
+    D44
+    D45
+    D46
+    D47
+    D48
 *************************************************************
 
 *************************************************************
-Generating : Top Layer
-      File : Beacon.GTL
+Generating : Bottom Paste
+      File : Beacon-2.0.3-Gerber.GBP
 
-    Adding Layer      : Top Layer
+    Adding Layer      : Bottom Paste
+
+    Adding Layer      : Bottom Layer
 
     Adding Layer      : Multi-Layer
 
 
 Used DCodes :
-    D10
-    D12
-    D21
-    D22
-    D23
-    D24
-    D25
-    D26
-    D27
-    D28
-    D29
-    D37
-    D38
-    D51
-    D52
-    D53
-    D54
-    D55
-    D56
-    D57
-    D58
-    D59
-    D60
 *************************************************************
 
 *************************************************************
 Generating : Drill Drawing
-      File : Beacon.GD1
+      File : Beacon-2.0.3-Gerber.GD1
 
     Adding Drill Pair : Top Layer-Bottom Layer
 
@@ -217,7 +217,7 @@ Used DCodes :
 
 *************************************************************
 Generating : Drill Guide
-      File : Beacon.GG1
+      File : Beacon-2.0.3-Gerber.GG1
 
     Adding Drill Pair : Top Layer-Bottom Layer
 

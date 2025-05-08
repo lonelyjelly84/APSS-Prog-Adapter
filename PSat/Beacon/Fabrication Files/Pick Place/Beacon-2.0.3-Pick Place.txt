@@ -1,12 +1,12 @@
 Altium Designer Pick and Place Locations
-C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\PSat\Beacon\.\Fabrication Files\Pick Place\Pick Place for Beacon.txt
+C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\PSat\Beacon\.\Fabrication Files\Pick Place\Beacon-2.0.3-Pick Place.txt
 
 ========================================================================================================================
 File Design Information:
 
 Date:       08/05/25
-Time:       18:13
-Revision:   adfe58743bcc58b1d104bec9d6718b3eb1f573c5
+Time:       19:19
+Revision:   f0f6f2f012c28032590a0b925580085e02ba25d0
 Variant:    No variations
 Units used: mil
 

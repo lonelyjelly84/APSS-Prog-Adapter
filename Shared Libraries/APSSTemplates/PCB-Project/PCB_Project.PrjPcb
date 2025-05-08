@@ -156,6 +156,22 @@ DItemRevisionGUID=
 DocumentPath=Fabrication Files\Gerber\PCB_Project.RUL
 DItemRevisionGUID=
 
+[Parameter1]
+Name=Project
+Value=
+
+[Parameter2]
+Name=DesignName
+Value=
+
+[Parameter3]
+Name=Designer
+Value=
+
+[Parameter4]
+Name=BoardRevision
+Value=
+
 [Configuration1]
 Name=Sources
 ParameterCount=0
