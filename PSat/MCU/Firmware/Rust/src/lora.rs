@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 use core::{cell::RefCell, time::Duration};
 
-use arrayvec::ArrayVec;
 use embedded_hal_bus::spi::RefCellDevice;
 use embedded_lora_rfm95::{error::{IoError, RxCompleteError, TxStartError}, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
 use embedded_hal_compat::{eh1_0::delay::DelayNs, markers::ForwardOutputPin, Forward, ForwardCompat};
@@ -10,6 +9,7 @@ use nb::Error::{WouldBlock, Other};
 use crate::{board::FwSpiBus, pin_mappings::{RadioCsPin, RadioResetPin}};
 
 const LORA_FREQ_HZ: u32 = 915_000_000;
+pub use rfm95::RFM95_FIFO_SIZE;
 
 pub fn new(spi_ref: &'static RefCell<FwSpiBus>, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
     let radio_spi: SPIDevice = RefCellDevice::new(spi_ref, cs_pin.forward(), crate::lora::DelayWrapper(delay)).unwrap();
@@ -70,12 +70,12 @@ impl Radio {
         self.driver.start_rx(timeout).unwrap();
     }
 
-    /// Check whether the radio has recieved a packet. If so, returns the packet as a slice of bytes.
+    /// Check whether the radio has recieved a packet. If so, returns a reference to the slice of buf that contains the message.
     /// 
     /// If not, returns either `StillRecieving` or `RxTimeout`. In the timeout case you should call `recieve_start()` again.
-    pub fn recieve_is_complete(&mut self, buf: &mut ArrayVec<u8, {rfm95::RFM95_FIFO_SIZE}>) -> nb::Result<(), RxCompleteError> {
-        match self.driver.complete_rx(buf) {
-            Ok(Some(_n)) => Ok(()),
+    pub fn recieve_is_complete<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> nb::Result<&'a [u8], RxCompleteError> {
+        match self.driver.complete_rx(buf.as_mut_slice()) {
+            Ok(Some(n)) => Ok(&buf[0..n]),
             Ok(None) => Err(WouldBlock),
             Err(e) => Err(Other(e)),
         }
@@ -121,8 +121,8 @@ impl DelayNs for DelayWrapper {
 }
 
 pub mod tests {
-    use arrayvec::ArrayVec;
     use embedded_hal::timer::CountDown;
+    use embedded_lora_rfm95::error::RxCompleteError;
     use ufmt::uwrite;
 
     pub fn range_test_tx(mut board: crate::board::Board) -> ! {
@@ -130,13 +130,14 @@ pub mod tests {
         board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
         board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
         loop {
-            if board.radio.transmit_is_complete().is_ok() {
-                board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
-            }
-
+            // Sends at most one message per second.
             if board.timer_b0.wait().is_ok() {
                 current_time.increment();
-                board.gpio.green_led.toggle();
+                
+                if board.radio.transmit_is_complete().is_ok() {
+                    board.gpio.green_led.toggle();
+                    board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
+                }
             }
         }
     }
@@ -155,17 +156,22 @@ pub mod tests {
     }
 
     pub fn range_test_rx(mut board: crate::board::Board) -> ! {
-        let mut buf = ArrayVec::new();
+        let mut buf = [0u8; super::RFM95_FIFO_SIZE];
         let mut current_time = Time::default();
         board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
+        board.radio.recieve_start(None);
         loop {
-            if board.radio.recieve_is_complete(&mut buf).is_ok() {
-                let Ok(signal_strength) = board.radio.driver.get_packet_strength() else {continue};
-                let Ok(rssi) = board.radio.driver.get_packet_rssi() else {continue};
-                let Ok(snr) = board.radio.driver.get_packet_snr() else {continue};
-                crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(&buf).unwrap(), signal_strength, rssi, snr);
+            match board.radio.recieve_is_complete(&mut buf) {
+                Err(nb::Error::Other(RxCompleteError::TimeoutError(_))) => board.radio.recieve_start(None),
+                Err(_e) => (),
+                Ok(msg) => {
+                    let Ok(signal_strength) = board.radio.driver.get_packet_strength() else {continue};
+                    let Ok(rssi) = board.radio.driver.get_packet_rssi() else {continue};
+                    let Ok(snr) = board.radio.driver.get_packet_snr() else {continue};
+                    crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(msg).unwrap(), signal_strength, rssi, snr);
+                    board.radio.recieve_start(None);
+                },
             }
-
             if board.timer_b0.wait().is_ok() {
                 current_time.increment();
             }
