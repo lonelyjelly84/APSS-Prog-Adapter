@@ -15,9 +15,9 @@ LifeCycleDefinitionGUID=
 RevisionNamingSchemeGUID=
 
 [OutputGroup1]
-Name=
+Name=Output_Job_File.OutJob
 Description=
-TargetOutputMedium=Bill of Materials
+TargetOutputMedium=Assembly
 VariantName=[No Variations]
 VariantScope=0
 CurrentConfigurationName=
@@ -68,7 +68,7 @@ OutputName3=Bill of Materials
 OutputCategory3=Report
 OutputDocumentPath3=
 OutputVariantName3=
-OutputEnabled3=1
+OutputEnabled3=0
 OutputEnabled3_OutputMedium1=0
 OutputEnabled3_OutputMedium2=0
 OutputEnabled3_OutputMedium3=0
@@ -108,7 +108,7 @@ OutputName5=Generate pick and place files
 OutputCategory5=Assembly
 OutputDocumentPath5=
 OutputVariantName5=
-OutputEnabled5=0
+OutputEnabled5=1
 OutputEnabled5_OutputMedium1=0
 OutputEnabled5_OutputMedium2=0
 OutputEnabled5_OutputMedium3=0
@@ -131,7 +131,7 @@ OutputEnabled6_OutputMedium5=0
 OutputDefault6=0
 PageOptions6=Record=PageOptions|CenterHorizontal=True|CenterVertical=True|PrintScale=1.00|XCorrection=1.00|YCorrection=1.00|PrintKind=1|BorderSize=5000000|LeftOffset=0|BottomOffset=0|Orientation=2|PaperLength=1000|PaperWidth=1000|Scale=100|PaperSource=7|PrintQuality=-3|MediaType=1|DitherType=10|PrintScaleMode=1|PaperKind=A4|PaperIndex=9
 Configuration6_Name1=OutputConfigurationParameter1
-Configuration6_Item1=Record=ExportPDF3DSetting|Version=110|Format=0|Flags=8158|Scheme=0|ViewColorR0=255|ViewColorG0=255|ViewColorB0=255|ViewLignt0=9|ViewColorR1=255|ViewColorG1=255|ViewColorB1=255|ViewLignt1=9|ViewColorR2=255|ViewColorG2=255|ViewColorB2=255|ViewLignt2=9|ViewColorR3=255|ViewColorG3=255|ViewColorB3=255|ViewLignt3=9|DocumentPath=C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\Shared Libraries\APSSTemplates\PCB-Project\PCB_Project.PcbDoc
+Configuration6_Item1=Record=ExportPDF3DSetting|Version=110|Format=0|Flags=8158|Scheme=0|ViewColorR0=255|ViewColorG0=255|ViewColorB0=255|ViewLignt0=9|ViewColorR1=255|ViewColorG1=255|ViewColorB1=255|ViewLignt1=9|ViewColorR2=255|ViewColorG2=255|ViewColorB2=255|ViewLignt2=9|ViewColorR3=255|ViewColorG3=255|ViewColorB3=255|ViewLignt3=9|DocumentPath=C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\PSat\Beacon\Beacon.PcbDoc
 OutputType7=PCB Print
 OutputName7=PCB Prints
 OutputCategory7=Documentation
@@ -178,7 +178,7 @@ OutputPathOutputerPrefix2=
 OutputPathOutputerValue2=
 OutputFileName2=outjob.PDF
 OutputFileNameMulti2==OutputType
-UseOutputNameForMulti2=1
+UseOutputNameForMulti2=0
 OutputFileNameSpecial2=
 OpenOutput2=1
 PromptOverwrite2=1
@@ -208,7 +208,7 @@ OutputFileNameMulti3=
 UseOutputNameForMulti3=1
 OutputFileNameSpecial3=
 OpenOutput3=1
-OutputFilePath4=.\
+OutputFilePath4=C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\PSat\Beacon\.\
 ReleaseManaged4=0
 OutputBasePath4=.\
 OutputPathMedia4=
@@ -217,7 +217,7 @@ OutputPathOutputer4=[Output Type]
 OutputPathOutputerPrefix4=
 OutputPathOutputerValue4=
 OutputFileName4=
-OutputFileNameMulti4==OutputName
+OutputFileNameMulti4==ProjectName +'-'+version
 UseOutputNameForMulti4=1
 OutputFileNameSpecial4=
 OpenOutput4=1
@@ -248,7 +248,7 @@ OpenGerberOutput3=0
 OpenNCDrillOutput3=0
 OpenIPCOutput3=0
 EnableReload3=0
-RelativeOutputPath4=.\
+RelativeOutputPath4=C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\PSat\Beacon\.\
 OpenOutputs4=1
 AddToProject4=1
 TimestampFolder4=0
