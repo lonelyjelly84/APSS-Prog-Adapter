@@ -1,22 +1,29 @@
 #![allow(dead_code)]
+use core::{cell::RefCell, time::Duration};
 
-use core::time::Duration;
-
-use embedded_lora_rfm95::{lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
-use embedded_hal_compat::{eh1_0::delay::DelayNs, Forward, ForwardCompat};
-use msp430fr2x5x_hal::{delay::Delay, gpio::{Output, Pin, Pin4}, spi::SpiBus, pac::P4};
-use crate::pin_mappings::{RadioCsPin, RadioEusci, RadioResetPin, RadioSpi};
+use embedded_hal_bus::spi::RefCellDevice;
+use embedded_lora_rfm95::{error::{IoError, RxCompleteError, TxStartError}, lora::types::{Bandwidth, CodingRate, CrcMode, HeaderMode, Polarity, PreambleLength, SpreadingFactor, SyncWord}, rfm95::{self, Rfm95Driver}};
+use embedded_hal_compat::{eh1_0::delay::DelayNs, markers::ForwardOutputPin, Forward, ForwardCompat};
+use msp430fr2x5x_hal::delay::Delay;
+use nb::Error::{WouldBlock, Other};
+use crate::{board::FwSpiBus, pin_mappings::{RadioCsPin, RadioResetPin}};
 
 const LORA_FREQ_HZ: u32 = 915_000_000;
+pub use rfm95::RFM95_FIFO_SIZE;
 
-pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
-    let mut rfm95 = Rfm95Driver::new(spi.forward(), cs_pin.forward(), reset_pin.forward(), DelayWrapper(delay)).unwrap();
-
+pub fn new(spi_ref: &'static RefCell<FwSpiBus>, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: Delay) -> Radio {
+    let radio_spi: SPIDevice = RefCellDevice::new(spi_ref, cs_pin.forward(), crate::lora::DelayWrapper(delay)).unwrap();
+    let mut rfm95 = match Rfm95Driver::new(radio_spi, reset_pin.forward(), &mut DelayWrapper(delay)) {
+        Ok(rfm) => rfm,
+        Err(_e) => panic!("Radio reports invalid silicon revision. Is the beacon connected?"),
+    };
+    
+    // 62.5kHz bandwidth, 4/5 coding rate, SF10 gives a bitrate of about 500bps.
     let lora_config = embedded_lora_rfm95::lora::config::Builder::builder()
-        .set_bandwidth(Bandwidth::B7_8) // lowest bandwidth == longest range
-        .set_coding_rate(CodingRate::C4_8) // Maximum error correction
+        .set_bandwidth(Bandwidth::B62_5) // lower bandwidth == longer range, but very low bandwidths can suffer from clock source tolerance issues
+        .set_coding_rate(CodingRate::C4_5) // Error correction lowers bitrate. Consider how electronically noisy the area might be.
         .set_crc_mode(CrcMode::Disabled)
-        .set_frequency(LORA_FREQ_HZ.into()) // Hz
+        .set_frequency(LORA_FREQ_HZ.into())
         .set_header_mode(HeaderMode::Explicit)
         .set_polarity(Polarity::Normal)
         .set_preamble_length(PreambleLength::L8)
@@ -24,99 +31,73 @@ pub fn new(spi: RadioSpi, cs_pin: RadioCsPin, reset_pin: RadioResetPin, delay: D
         .set_sync_word(SyncWord::PRIVATE);
     rfm95.set_config(&lora_config).unwrap();
 
-    Radio{radio: rfm95}
+    Radio{driver: rfm95}
 }
 
-pub type RFM95 = Rfm95Driver<Forward<SpiBus<RadioEusci>>, Forward<Pin<P4, Pin4, Output>, embedded_hal_compat::markers::ForwardOutputPin>>;
+type FwCsPin = Forward<RadioCsPin, ForwardOutputPin>;
+type SPIDevice = RefCellDevice<'static, FwSpiBus, FwCsPin, DelayWrapper>;
+type RFM95 = Rfm95Driver<SPIDevice>;
 /// Top-level interface for the radio module.
 pub struct Radio {
-    radio: RFM95,
+    pub driver: RFM95,
 }
 impl Radio {
-    /// Transmit data and wait until transmission is complete.
-    /// 
-    /// Panics upon recieving any error from the radio module.
-    pub fn blocking_transmit(&mut self, data: &[u8]) {
-        self.radio.start_tx(data).unwrap();
-        loop {
-            match self.radio.complete_tx(){
-                Ok(None) => continue,   // Still sending
-                Ok(_) => return,        // Sending complete
-                Err(e) => panic!("{e}"),
-            }
+    /// Begin transmission and return immediately. Check whether the transmission is complete by calling `transmit_is_complete()`.
+    pub fn transmit_start(&mut self, data: &[u8]) -> Result<(), TxError>{
+        match self.driver.start_tx(data) {
+            Ok(()) => Ok(()), 
+            Err(TxStartError::InvalidArgumentError(_)) => Err(TxError::InvalidBufferSize),
+            Err(TxStartError::IoError(_)) => Err(TxError::IoError), 
         }
-    }
-    /// Try to recieve data, and don't return until a packet is recieved.
-    /// 
-    /// Panics upon recieving any non-timeout error from the radio module.
-    pub fn blocking_recieve<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> &'a [u8] {
-        let size;
-        'outer: loop {
-            let max_timeout = self.radio.rx_timeout_max().unwrap();
-            self.radio.start_rx(max_timeout).unwrap();
-            
-            'inner: loop {
-                match self.radio.complete_rx(buf) {
-                    Ok(Some(n)) => {size = n; break 'outer;},
-                    Ok(None) => continue,
-                    Err("RX timeout") => break 'inner,
-                    Err(e) => panic!("{e}"),
-                };
-            };
-        }
-        &buf[0..size]
-    }
-    /// Begin transmission and return immediately. Check whether the transmission is complete by calling `async_transmit_is_complete()`.
-    pub fn async_transmit_start(&mut self, data: &[u8]) {
-        self.radio.start_tx(data).unwrap();
     }
 
     /// Check whether the radio has finished sending.
-    /// 
-    /// Panics upon recieving any error from the radio module.
-    pub fn async_transmit_is_complete(&mut self) -> bool {
-        match self.radio.complete_tx(){
-            Ok(None) => false,    // Still sending
-            Ok(_) => true,        // Sending complete
-            Err(e) => panic!("{e}"),
+    pub fn transmit_is_complete(&mut self) -> nb::Result<(), IoError> {
+        match self.driver.complete_tx(){
+            Ok(None) => Err(WouldBlock),    // Still sending
+            Ok(_) => Ok(()),                // Sending complete
+            Err(e) => Err(Other(e)),
         }
     }
-    /// Tell the radio to listen for a packet and return immediately. Check whether anything was recieved by calling `async_recieve_is_complete()`.
+    /// Tell the radio to listen for a packet and return immediately. Check whether anything was recieved by calling `recieve_is_complete()`.
     /// 
     /// A timeout value is optional, if none is provided the maximum timeout is used. You should prepare to deal with timeouts.
-    pub fn async_recieve_start(&mut self, timeout: Option<Duration>) {
+    pub fn recieve_start(&mut self, timeout: Option<Duration>) {
         let timeout = match timeout {
             Some(t) => t,
-            None => self.radio.rx_timeout_max().unwrap(),
+            None => self.driver.rx_timeout_max().unwrap(),
         };
-        self.radio.start_rx(timeout).unwrap();
+        self.driver.start_rx(timeout).unwrap();
     }
 
-    /// Check whether the radio has recieved a packet. If so, returns the packet as a slice of bytes.
+    /// Check whether the radio has recieved a packet. If so, returns a reference to the slice of buf that contains the message.
     /// 
-    /// If not, returns either `StillRecieving` or `RxTimeout`. In the timeout case you should call `async_recieve_start()` again.
-    /// 
-    /// Panics upon recieving any non-timeout error from the radio module.
-    pub fn async_recieve_is_complete<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> Result<&'a [u8], RadioRecieveError> {
-        let size = match self.radio.complete_rx(buf) {
-            Ok(Some(n)) => n,
-            Ok(None) => return Err(RadioRecieveError::StillRecieving),
-            Err("RX timeout") => return Err(RadioRecieveError::RxTimeout),
-            Err(e) => panic!("{e}"),
-        };
-        Ok(&buf[0..size])
+    /// If not, returns either `StillRecieving` or `RxTimeout`. In the timeout case you should call `recieve_start()` again.
+    pub fn recieve_is_complete<'a>(&mut self, buf: &'a mut [u8; rfm95::RFM95_FIFO_SIZE]) -> nb::Result<&'a [u8], RxCompleteError> {
+        match self.driver.complete_rx(buf.as_mut_slice()) {
+            Ok(Some(n)) => Ok(&buf[0..n]),
+            Ok(None) => Err(WouldBlock),
+            Err(e) => Err(Other(e)),
+        }
     }
 }
 
-pub enum RadioRecieveError {
-    RxTimeout,
-    StillRecieving,
+#[derive(Debug)]
+pub enum RxError {
+    CrcFailure,
+    Timeout,
+    IoError,
+}
+
+#[derive(Debug)]
+pub enum TxError {
+    InvalidBufferSize,
+    IoError,
 }
 
 use embedded_hal::blocking::delay::DelayMs;
-
 // The radio library uses a different version of embedded_hal, so we need to write some wrappers.
-struct DelayWrapper(Delay);
+pub struct DelayWrapper(Delay);
 impl DelayNs for DelayWrapper {
     fn delay_ms(&mut self, ms: u32) {
         if ms < (u16::MAX as u32) {
@@ -136,5 +117,104 @@ impl DelayNs for DelayWrapper {
     fn delay_ns(&mut self, ns: u32) {
         let ms = ns / 1_000_000;
         self.0.delay_ms(ms as u16);
+    }
+}
+
+pub mod tests {
+    use embedded_hal::timer::CountDown;
+    use embedded_lora_rfm95::error::RxCompleteError;
+    use ufmt::uwrite;
+
+    pub fn range_test_tx(mut board: crate::board::Board) -> ! {
+        let mut current_time = Time::default();
+        board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
+        board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
+        loop {
+            // Sends at most one message per second.
+            if board.timer_b0.wait().is_ok() {
+                current_time.increment();
+                
+                if board.radio.transmit_is_complete().is_ok() {
+                    board.gpio.green_led.toggle();
+                    board.radio.transmit_start(&time_to_bytes(&current_time)).unwrap();
+                }
+            }
+        }
+    }
+
+    fn time_to_bytes(time: &Time) -> [u8;8] {
+        [
+            time.hours / 10 + b'0', 
+            time.hours % 10 + b'0', 
+            b':', 
+            time.minutes / 10 + b'0', 
+            time.minutes % 10 + b'0', 
+            b':', 
+            time.seconds / 10 + b'0', 
+            time.seconds % 10 + b'0'
+        ]
+    }
+
+    pub fn range_test_rx(mut board: crate::board::Board) -> ! {
+        let mut buf = [0u8; super::RFM95_FIFO_SIZE];
+        let mut current_time = Time::default();
+        board.timer_b0.start(msp430fr2x5x_hal::clock::REFOCLK); // 1 second timer
+        board.radio.recieve_start(None);
+        loop {
+            match board.radio.recieve_is_complete(&mut buf) {
+                Err(nb::Error::Other(RxCompleteError::TimeoutError(_))) => board.radio.recieve_start(None),
+                Err(_e) => (),
+                Ok(msg) => {
+                    let Ok(signal_strength) = board.radio.driver.get_packet_strength() else {continue};
+                    let Ok(rssi) = board.radio.driver.get_packet_rssi() else {continue};
+                    let Ok(snr) = board.radio.driver.get_packet_snr() else {continue};
+                    crate::println!("[{}] '{}', Strength: {}, RSSI: {}, SNR: {}", current_time, core::str::from_utf8(msg).unwrap(), signal_strength, rssi, snr);
+                    board.radio.recieve_start(None);
+                },
+            }
+            if board.timer_b0.wait().is_ok() {
+                current_time.increment();
+            }
+        }
+    }
+    #[derive(Default)]
+    struct Time {
+        seconds: u8,
+        minutes: u8,
+        hours: u8,
+    }
+    impl Time {
+        /// Add one second to the time.
+        pub fn increment(&mut self) {
+            if self.seconds < 59 {
+                self.seconds += 1;
+                return;
+            }
+
+            self.seconds = 0;
+            if self.minutes < 59 {
+                self.minutes += 1;
+                return;
+            }
+
+            self.minutes = 0;
+            self.hours += 1;
+        }
+    }
+    impl ufmt::uDisplay for Time {
+        fn fmt<W: ufmt::uWrite + ?Sized>(&self, f: &mut ufmt::Formatter<'_, W>) -> Result<(), W::Error> {
+            for (i, &val) in [self.hours, self.minutes, self.seconds].iter().enumerate() {
+                if val < 10 {
+                    ufmt::uwrite!(f, "0{}", val)?;
+                }
+                else {
+                    ufmt::uwrite!(f, "{}", val)?; 
+                }
+                if i != 2 {
+                    ufmt::uwrite!(f, ":")?;
+                }
+            }
+            Ok(())
+        }
     }
 }

@@ -1,37 +1,42 @@
 // An example board support package for a stack using the MCU and Beacon boards.
 
 #![allow(dead_code)]
-use msp430::critical_section;
+use core::cell::RefCell;
+use embedded_hal_compat::{Forward, ForwardCompat};
+use msp430fr2355::E_USCI_B1;
 use msp430fr2x5x_hal::{
     adc::{Adc, AdcConfig, ClockDivider, Predivider, Resolution, SampleTime, SamplingRate}, 
-    clock::{Clock, ClockConfig, DcoclkFreqSel, MclkDiv, SmclkDiv}, 
-    delay::Delay, fram::Fram, 
-    gpio::{Alternate1, Alternate3, Batch, Floating, Input, Output, Pin, Pin0, Pin1, Pin2, Pin3, Pin4, Pin5, Pin6, Pin7, Pullup, P1, P2, P3, P4, P5, P6}, 
-    i2c::{GlitchFilter, I2CBusConfig, I2cBus}, pmm::Pmm, 
-    pac::{E_USCI_B0, PMM},
-    serial::{BitCount, BitOrder, Loopback, Parity, SerialConfig, StopBits}, 
-    spi::SpiBusConfig, 
-    watchdog::Wdt
+    clock::{Clock, ClockConfig, DcoclkFreqSel, MclkDiv, SmclkDiv}, delay::Delay, fram::Fram, 
+    gpio::{Batch, Floating, Input, Pin, Pin0, Pin1, Pin2, Pin3, Pin4, Pin5, Pin6, Pin7, P1, P2, P3, P4, P5, P6}, 
+    i2c::{GlitchFilter, I2CBusConfig, I2cBus}, 
+    pac::{E_USCI_B0, PMM, TB0}, pmm::Pmm, pwm::TimerConfig, spi::{SpiBus, SpiBusConfig}, timer::{Timer, TimerParts3}, watchdog::Wdt
 };
 use embedded_hal::digital::v2::{OutputPin, ToggleableOutputPin};
-use crate::{gps::{self, Gps}, lora::Radio, pin_mappings::{BlueLedPin, DebugTxPin, Enable1v8Pin, Enable5vPin, GpsEnPin, GpsRxPin, GpsTxPin, GreenLedPin, HalfVbatPin, I2cSclPin, I2cSdaPin, LoraCsPin, LoraIrqPin, LoraResetPin, PowerGood1v8Pin, PowerGood3v3Pin, RedLedPin, SpiMisoPin, SpiMosiPin, SpiSclkPin}, println};
+use static_cell::StaticCell;
+use crate::{gps::Gps, lora::Radio, pin_mappings::*, println};
 
 /// Top-level object representing the board.
+/// 
+/// Not all peripherals are configured. If you need more, add their configuration code to ::configure().
 pub struct Board {
     pub delay: Delay,
     pub gps: Gps,
-    //pub gps_uart:   (Tx<E_USCI_A1>, Rx<E_USCI_A1>),
     pub i2c: I2cBus<E_USCI_B0>,
     pub adc: Adc,
     pub radio: Radio,
     pub gpio: Gpio,
+    pub timer_b0: Timer<TB0>,
 }
-// This is where you should implement functionality, like sending SPI packets to specific devices, etc. 
+// This is where you should implement top-level functionality. 
 impl Board {
     pub fn battery_voltage_mv(&mut self) -> u16 {
         self.adc.read_voltage_mv(&mut self.gpio.half_vbat, 3300).unwrap() * 2
     }
 }
+
+// Note that the LoRa library requires embedded_hal v1.0, whereas our MSP430 driver is still on v0.2.7
+// So we use the 'forward' functionality from embedded_hal_compat to automatically implement the v1.0 traits using the v0.2.7 version
+pub type FwSpiBus = Forward<SpiBus<E_USCI_B1>>;
 
 /// Call this function ONCE at the beginning of your program.
 /// Printing won't work until this function is called.
@@ -42,48 +47,46 @@ pub fn configure() -> Board {
 
     // Configure GPIO. `used` are pins consumed by other peripherals.
     let (gpio, used) = Gpio::configure(regs.P1, regs.P2, regs.P3, regs.P4, regs.P5, regs.P6, regs.PMM);
-
+    
     // Configure clocks to get accurate delay timing, and used by other peripherals
     let mut fram = Fram::new(regs.FRCTL);
-    let (smclk, _aclk, delay) = ClockConfig::new(regs.CS)
+    let (smclk, aclk, delay) = ClockConfig::new(regs.CS)
         .mclk_dcoclk(DcoclkFreqSel::_8MHz, MclkDiv::_1)
         .smclk_on(SmclkDiv::_1)
+        .aclk_refoclk() // 32768 Hz
         .freeze(&mut fram);
 
+    // Spare UART, useful for debug printing to a computer
+    crate::serial::configure_debug_serial(used.debug_tx_pin, &smclk, regs.E_USCI_A0);
+    println!("Serial init"); // Like this!
+    
     // SPI, used by the LoRa radio
-    let spi = SpiBusConfig::new(regs.E_USCI_B1, embedded_hal::spi::MODE_0, true)
-        .use_smclk(&smclk, 32)
+    const SPI_FREQ_HZ: u32 = 250_000; // 250kHz is arbitrary
+    let clk_div = (smclk.freq() / SPI_FREQ_HZ) as u16;
+    let spi_bus = SpiBusConfig::new(regs.E_USCI_B1, embedded_hal::spi::MODE_0, true)
+        .use_smclk(&smclk, clk_div) 
         .configure_with_software_cs(used.miso, used.mosi, used.sclk);
-
+    
+    // In case we have multiple devices that need to share the SPI bus, we wrap in a RefCell to tell compiler
+    // we will have multiple mutable references but will ensure that we only ever use one at a time 
+    // (MSP430 is single threaded, so this is equivalent to not sending in an interrupt).
+    // StaticCell is just so we can get a 'static reference and don't have to add generic lifetimes to everything.
+    static SPI: StaticCell<RefCell<FwSpiBus>> = StaticCell::new();
+    let spi_ref: &'static _ = SPI.init(RefCell::new(spi_bus.forward()));
+    
     // LoRa radio
-    let radio = crate::lora::new(spi, used.lora_cs, used.lora_reset, delay);
+    let radio = crate::lora::new(spi_ref, used.lora_cs, used.lora_reset, delay);
 
     // GPS
-    let gps = gps::Gps::new(regs.E_USCI_A1, &smclk, used.gps_tx_pin, used.gps_rx_pin);
+    let gps = crate::gps::Gps::new(regs.E_USCI_A1, &smclk, used.gps_tx_pin, used.gps_rx_pin);
 
-    // Spare UART, useful for debug printing to a computer
-    let debug_uart = SerialConfig::new(regs.E_USCI_A0, 
-        BitOrder::LsbFirst, 
-        BitCount::EightBits, 
-        StopBits::OneStopBit, 
-        Parity::NoParity, 
-        Loopback::NoLoop, 
-        115200)
-        .use_smclk(&smclk)
-        .tx_only(used.debug_tx_pin);
-
-    // Wrap the UART in a newtype that can print arbitrary strings, utilising core::fmt::Write
-    let debug_uart = crate::serial::PrintableSerial(debug_uart);
-
-    // Move the UART into a global so it can be called anywhere, including in panics.
-    critical_section::with(|cs| {
-        crate::serial::SERIAL.replace(cs, Some(debug_uart))
-    });
-    println!("Serial init"); // Like this!
+    // Timer
+    let timer_parts = TimerParts3::new(regs.TB0, TimerConfig::aclk(&aclk));
+    let timer_b0 = timer_parts.timer;
 
     // I2C
-    const I2C_FREQ: u32 = 100_000; //Hz
-    let clk_div = (smclk.freq() / I2C_FREQ) as u16;
+    const I2C_FREQ_HZ: u32 = 100_000;
+    let clk_div = (smclk.freq() / I2C_FREQ_HZ) as u16;
     let i2c = I2CBusConfig::new(
         regs.E_USCI_B0, 
         GlitchFilter::Max50ns)
@@ -100,7 +103,7 @@ pub fn configure() -> Board {
         .use_modclk()
         .configure(regs.ADC);
 
-    Board {delay, gps, radio, i2c, adc, gpio}
+    Board {delay, gps, radio, i2c, adc, gpio, timer_b0}
 }
 
 /// The RGB LEDs are active low, which can be a little confusing. A helper struct to reduce cognitive load.
