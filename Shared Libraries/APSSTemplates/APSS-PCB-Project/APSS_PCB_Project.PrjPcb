@@ -84,7 +84,7 @@ GenerateClassCluster=0
 DocumentUniqueId=JPCQCDAN
 
 [Document3]
-DocumentPath=PCB_Project.PcbDoc
+DocumentPath=APSS_PCB_Project.PcbDoc
 AnnotationEnabled=1
 AnnotateStartValue=1
 AnnotationIndexControlEnabled=0
@@ -157,19 +157,19 @@ DocumentPath=Fabrication Files\Gerber\PCB_Project.RUL
 DItemRevisionGUID=
 
 [Parameter1]
-Name=Project
+Name=BoardRevision
 Value=
 
 [Parameter2]
-Name=DesignName
-Value=
-
-[Parameter3]
 Name=Designer
 Value=
 
+[Parameter3]
+Name=DesignName
+Value=
+
 [Parameter4]
-Name=BoardRevision
+Name=Project
 Value=
 
 [Configuration1]
@@ -663,36 +663,6 @@ OutputName12=Web Review Data
 OutputDocumentPath12=
 OutputVariantName12=
 OutputDefault12=0
-OutputType13=Ansoft Neutral
-OutputName13=Ansoft Neutral (AutoPCB)
-OutputDocumentPath13=
-OutputVariantName13=
-OutputDefault13=0
-OutputType14=HyperLynx
-OutputName14=HyperLynx (AutoPCB)
-OutputDocumentPath14=
-OutputVariantName14=
-OutputDefault14=0
-OutputType15=MathWorks
-OutputName15=MathWorks (AutoPCB)
-OutputDocumentPath15=
-OutputVariantName15=
-OutputDefault15=0
-OutputType16=Orcad v7 Capture Design
-OutputName16=Orcad v7 Capture Design (AutoSCH)
-OutputDocumentPath16=
-OutputVariantName16=
-OutputDefault16=0
-OutputType17=P-CAD ASCII
-OutputName17=P-CAD ASCII (AutoPCB)
-OutputDocumentPath17=
-OutputVariantName17=
-OutputDefault17=0
-OutputType18=P-CAD V16 Schematic Design
-OutputName18=P-CAD V16 Schematic Design (AutoSCH)
-OutputDocumentPath18=
-OutputVariantName18=
-OutputDefault18=0
 
 [OutputGroup10]
 Name=PostProcess Outputs
