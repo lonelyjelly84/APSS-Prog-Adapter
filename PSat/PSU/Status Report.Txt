@@ -1,0 +1,14 @@
+Project Outputs Generation Report
+---------------------------------
+Start Output Generation At 7:23:14 pm On 3/07/2025
+
+Output: Bill of Materials
+Type  : BOM
+From  : Project [PSat PSU.PrjPcb]
+   Generated File[//vontier-my.sharepoint.com/personal/filipk_invenco_com/Documents/Documents/APSS-Reference-PCBs/PSat/PSU/BOM/PSU-2.0.7-BOM.xlsx]
+
+
+Files Generated   : 1
+Documents Printed : 0
+
+Finished Output Generation At 7:23:21 pm On 3/07/2025

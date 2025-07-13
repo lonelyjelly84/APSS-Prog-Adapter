@@ -373,6 +373,23 @@ GenerateClassCluster=0
 DocumentUniqueId=
 
 [Document20]
+DocumentPath=Output_Job_File.OutJob
+AnnotationEnabled=1
+AnnotateStartValue=1
+AnnotationIndexControlEnabled=0
+AnnotateSuffix=
+AnnotateScope=All
+AnnotateOrder=-1
+DoLibraryUpdate=1
+DoDatabaseUpdate=1
+ClassGenCCAutoEnabled=1
+ClassGenCCAutoRoomEnabled=0
+ClassGenNCAutoScope=None
+DItemRevisionGUID=
+GenerateClassCluster=0
+DocumentUniqueId=
+
+[Document21]
 DocumentPath=outjob.OutJob
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -389,7 +406,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=
 
-[Document21]
+[Document22]
 DocumentPath=Libraries\RS2BE-10-G-SMT\RS2BE10GSMT.PcbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -406,7 +423,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=AXZUZHVJ
 
-[Document22]
+[Document23]
 DocumentPath=Libraries\RS2BE-10-G-SMT\RS2BE-10-G-SMT.SchLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -421,9 +438,9 @@ ClassGenCCAutoRoomEnabled=1
 ClassGenNCAutoScope=None
 DItemRevisionGUID=
 GenerateClassCluster=0
-DocumentUniqueId=
+DocumentUniqueId=ASKQKAHO
 
-[Document23]
+[Document24]
 DocumentPath=Libraries\SSM3J328R_LF\SSM3J328R_LF\SSMJ328R_LF.PcbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -440,7 +457,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=GMIVLSFD
 
-[Document24]
+[Document25]
 DocumentPath=Libraries\SSM3J328R_LF\SSM3J328R_LF\SSMJ328R_LF.SchLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -457,7 +474,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=JVHTISAB
 
-[Document25]
+[Document26]
 DocumentPath=Libraries\RT4812GJ8F\RT4812GJ8F.PcbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -474,7 +491,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=NPYAURVV
 
-[Document26]
+[Document27]
 DocumentPath=Libraries\RT4812GJ8F\RT4812GJ8F.SchLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -491,7 +508,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=VOBDOBPS
 
-[Document27]
+[Document28]
 DocumentPath=Libraries\SSQ-105-03-X-S\SAMTEC_SSQ-105-03-S-S.PcbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -508,7 +525,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=RIAJWWFN
 
-[Document28]
+[Document29]
 DocumentPath=Libraries\SSQ-105-03-X-S\SSQ-105-03-S-S.SchLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -525,7 +542,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=IIXXSXBJ
 
-[Document29]
+[Document30]
 DocumentPath=..\..\Shared Libraries\APSS Generic Components.PcbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -542,7 +559,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=CEPVHXXP
 
-[Document30]
+[Document31]
 DocumentPath=..\..\Shared Libraries\APSS Generic Components.SchLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -557,9 +574,9 @@ ClassGenCCAutoRoomEnabled=0
 ClassGenNCAutoScope=None
 DItemRevisionGUID=
 GenerateClassCluster=0
-DocumentUniqueId=
+DocumentUniqueId=PLQBJHHT
 
-[Document31]
+[Document32]
 DocumentPath=..\..\Shared Libraries\APSS Prototype Parts.PcbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -576,7 +593,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=QADXCREO
 
-[Document32]
+[Document33]
 DocumentPath=..\..\Shared Libraries\APSS Prototype Parts.SchLib
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -612,88 +629,272 @@ Variation1=Designator=J2a|UniqueId=\FYFAUGTC|Kind=1|AlternatePart=
 ParamVariationCount=0
 
 [GeneratedDocument1]
-DocumentPath=Project Outputs for PSat PSU\BOM\Bill of Materials-PSat PSU.xlsx
+DocumentPath=https://vontier-my.sharepoint.com/personal/filipk_invenco_com/Documents/Documents/APSS-Reference-PCBs/PSat/PSU/BOM/DesignName-BoardRevision-BOM.xlsx
 DItemRevisionGUID=
 
 [GeneratedDocument2]
-DocumentPath=Project Outputs for PSat PSU\Design Rule Check - PSU.html
+DocumentPath=https://vontier-my.sharepoint.com/personal/filipk_invenco_com/Documents/Documents/APSS-Reference-PCBs/PSat/PSU/BOM/PSU-2.0.7-BOM.xlsx
 DItemRevisionGUID=
 
 [GeneratedDocument3]
-DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU-RoundHoles.TXT
+DocumentPath=Project Outputs for PSat PSU\BOM\Bill of Materials-PSat PSU.xlsx
 DItemRevisionGUID=
 
 [GeneratedDocument4]
-DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU-SlotHoles.TXT
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.EXTREP
 DItemRevisionGUID=
 
 [GeneratedDocument5]
-DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU.DRR
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GBL
 DItemRevisionGUID=
 
 [GeneratedDocument6]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.EXTREP
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GBO
 DItemRevisionGUID=
 
 [GeneratedDocument7]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBL
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GBP
 DItemRevisionGUID=
 
 [GeneratedDocument8]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBO
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GBS
 DItemRevisionGUID=
 
 [GeneratedDocument9]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBP
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GD1
 DItemRevisionGUID=
 
 [GeneratedDocument10]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBS
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GG1
 DItemRevisionGUID=
 
 [GeneratedDocument11]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GD1
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GKO
 DItemRevisionGUID=
 
 [GeneratedDocument12]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GG1
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GM5
 DItemRevisionGUID=
 
 [GeneratedDocument13]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GKO
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GTL
 DItemRevisionGUID=
 
 [GeneratedDocument14]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTL
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GTO
 DItemRevisionGUID=
 
 [GeneratedDocument15]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTO
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GTP
 DItemRevisionGUID=
 
 [GeneratedDocument16]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTP
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.GTS
 DItemRevisionGUID=
 
 [GeneratedDocument17]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTS
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.REP
 DItemRevisionGUID=
 
 [GeneratedDocument18]
-DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU.LDP
+DocumentPath=Fabrication Files\Gerber\DesignName-BoardRevision-Gerber.RUL
 DItemRevisionGUID=
 
 [GeneratedDocument19]
-DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.REP
+DocumentPath=Fabrication Files\NC Drill\DesignName-BoardRevision-NC Drill-RoundHoles.TXT
 DItemRevisionGUID=
 
 [GeneratedDocument20]
+DocumentPath=Fabrication Files\NC Drill\DesignName-BoardRevision-NC Drill-SlotHoles.TXT
+DItemRevisionGUID=
+
+[GeneratedDocument21]
+DocumentPath=Fabrication Files\NC Drill\DesignName-BoardRevision-NC Drill.DRR
+DItemRevisionGUID=
+
+[GeneratedDocument22]
+DocumentPath=Fabrication Files\NC Drill\DesignName-BoardRevision-NC Drill.LDP
+DItemRevisionGUID=
+
+[GeneratedDocument23]
+DocumentPath=Fabrication Files\Pick Place\DesignName-BoardRevision-Pick Place.txt
+DItemRevisionGUID=
+
+[GeneratedDocument24]
+DocumentPath=Project Outputs for PSat PSU\Design Rule Check - PSU.html
+DItemRevisionGUID=
+
+[GeneratedDocument25]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.EXTREP
+DItemRevisionGUID=
+
+[GeneratedDocument26]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GBL
+DItemRevisionGUID=
+
+[GeneratedDocument27]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GBO
+DItemRevisionGUID=
+
+[GeneratedDocument28]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GBP
+DItemRevisionGUID=
+
+[GeneratedDocument29]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GBS
+DItemRevisionGUID=
+
+[GeneratedDocument30]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GD1
+DItemRevisionGUID=
+
+[GeneratedDocument31]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GG1
+DItemRevisionGUID=
+
+[GeneratedDocument32]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GKO
+DItemRevisionGUID=
+
+[GeneratedDocument33]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GM5
+DItemRevisionGUID=
+
+[GeneratedDocument34]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GTL
+DItemRevisionGUID=
+
+[GeneratedDocument35]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GTO
+DItemRevisionGUID=
+
+[GeneratedDocument36]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GTP
+DItemRevisionGUID=
+
+[GeneratedDocument37]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.GTS
+DItemRevisionGUID=
+
+[GeneratedDocument38]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.REP
+DItemRevisionGUID=
+
+[GeneratedDocument39]
+DocumentPath=.\Fabrication Files\Gerber\PSU-2.0.7-Gerber.RUL
+DItemRevisionGUID=
+
+[GeneratedDocument40]
+DocumentPath=.\Fabrication Files\NC Drill\PSU-2.0.7-NC Drill-RoundHoles.TXT
+DItemRevisionGUID=
+
+[GeneratedDocument41]
+DocumentPath=.\Fabrication Files\NC Drill\PSU-2.0.7-NC Drill-SlotHoles.TXT
+DItemRevisionGUID=
+
+[GeneratedDocument42]
+DocumentPath=.\Fabrication Files\NC Drill\PSU-2.0.7-NC Drill.DRR
+DItemRevisionGUID=
+
+[GeneratedDocument43]
+DocumentPath=.\Fabrication Files\NC Drill\PSU-2.0.7-NC Drill.LDP
+DItemRevisionGUID=
+
+[GeneratedDocument44]
+DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU-RoundHoles.TXT
+DItemRevisionGUID=
+
+[GeneratedDocument45]
+DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU-SlotHoles.TXT
+DItemRevisionGUID=
+
+[GeneratedDocument46]
+DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU.DRR
+DItemRevisionGUID=
+
+[GeneratedDocument47]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.EXTREP
+DItemRevisionGUID=
+
+[GeneratedDocument48]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBL
+DItemRevisionGUID=
+
+[GeneratedDocument49]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBO
+DItemRevisionGUID=
+
+[GeneratedDocument50]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBP
+DItemRevisionGUID=
+
+[GeneratedDocument51]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GBS
+DItemRevisionGUID=
+
+[GeneratedDocument52]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GD1
+DItemRevisionGUID=
+
+[GeneratedDocument53]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GG1
+DItemRevisionGUID=
+
+[GeneratedDocument54]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GKO
+DItemRevisionGUID=
+
+[GeneratedDocument55]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTL
+DItemRevisionGUID=
+
+[GeneratedDocument56]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTO
+DItemRevisionGUID=
+
+[GeneratedDocument57]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTP
+DItemRevisionGUID=
+
+[GeneratedDocument58]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.GTS
+DItemRevisionGUID=
+
+[GeneratedDocument59]
+DocumentPath=Project Outputs for PSat PSU\NC Drill\PSU.LDP
+DItemRevisionGUID=
+
+[GeneratedDocument60]
+DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.REP
+DItemRevisionGUID=
+
+[GeneratedDocument61]
 DocumentPath=Project Outputs for PSat PSU\Gerber\PSU.RUL
 DItemRevisionGUID=
 
 [Parameter1]
+Name=
+Value=
+
+[Parameter2]
+Name=DesignName
+Value=PSU
+
+[Parameter3]
+Name=Project
+Value=PSAT
+
+[Parameter4]
+Name=Designer
+Value=Ross P
+
+[Parameter5]
 Name=Version
-Value=2.0.6
+Value=2.0.7
+
+[Parameter6]
+Name=BoardRevision
+Value=2.0.7
 
 [Configuration1]
 Name=Sources
@@ -853,21 +1054,11 @@ OutputName20=WireList Netlist
 OutputDocumentPath20=
 OutputVariantName20=
 OutputDefault20=0
-OutputType21=SIMetrixNetlist
-OutputName21=SIMetrix
+OutputType21=XSpiceNetlist
+OutputName21=Mixed Sim Netlist
 OutputDocumentPath21=
 OutputVariantName21=
 OutputDefault21=0
-OutputType22=SIMPLISNetlist
-OutputName22=SIMPLIS
-OutputDocumentPath22=
-OutputVariantName22=
-OutputDefault22=0
-OutputType23=XSpiceNetlist
-OutputName23=Mixed Sim Netlist
-OutputDocumentPath23=
-OutputVariantName23=
-OutputDefault23=0
 
 [OutputGroup2]
 Name=Simulator Outputs
@@ -879,16 +1070,6 @@ OutputName1=Mixed Sim
 OutputDocumentPath1=
 OutputVariantName1=
 OutputDefault1=0
-OutputType2=SIMetrixSimulation
-OutputName2=SIMetrix
-OutputDocumentPath2=
-OutputVariantName2=
-OutputDefault2=0
-OutputType3=SIMPLISSimulation
-OutputName3=SIMPLIS
-OutputDocumentPath3=
-OutputVariantName3=
-OutputDefault3=0
 
 [OutputGroup3]
 Name=Documentation Outputs
@@ -1442,6 +1623,7 @@ Type147=1
 Type148=1
 Type149=1
 Type150=1
+Type151=1
 
 [Difference Levels]
 Type1=1
@@ -1525,6 +1707,7 @@ Type78=1
 Type79=1
 Type80=1
 Type81=1
+Type82=1
 
 [Electrical Rules Check]
 Type1=1
@@ -1681,6 +1864,13 @@ Type151=2
 Type152=1
 Type153=1
 Type154=0
+Type155=0
+Type156=0
+Type157=0
+Type158=0
+Type159=0
+Type160=0
+Type161=0
 
 [ERC Connection Matrix]
 L1=NNNNNNNNNNNWNNNWW

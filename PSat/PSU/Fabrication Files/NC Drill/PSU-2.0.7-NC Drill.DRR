@@ -1,0 +1,23 @@
+----------------------------------------------------------------------------------------------------------------------------------
+NCDrill File Report For: PSU.PcbDoc   3/07/2025  7:22:35 pm
+----------------------------------------------------------------------------------------------------------------------------------
+
+Layer Pair : Top Layer to Bottom Layer
+ASCII RoundHoles File : PSU-2.0.7-NC Drill-RoundHoles.TXT
+ASCII SlotHoles File : PSU-2.0.7-NC Drill-SlotHoles.TXT
+
+Tool       Hole Size               Hole Tolerance               Hole Type       Hole Count   Plated         Tool Travel
+----------------------------------------------------------------------------------------------------------------------------------
+T1      0.4mm (16mil)                                             Round             172       PTH        557.53mm (21.95inch)
+T2      0.5mm (20mil)                                             Slot              2         PTH        14.64mm (0.58inch)
+T3      0.6mm (24mil)                                             Slot              4         PTH        38.17mm (1.50inch)
+T4      0.711mm (28mil)                                           Round             3         PTH        22.13mm (0.87inch)
+T5      0.8mm (31mil)                                             Round             2         PTH        2.00mm (0.08inch)
+T6      0.9mm (35mil)                                             Round             2         PTH        2.54mm (0.10inch)
+T7      1mm (39mil)                                               Round             10        PTH        25.40mm (1.00inch)
+T8      4.5mm (177mil)                                            Round             3         PTH        80.02mm (3.15inch)
+T9      0.65mm (26mil)                                            Round             2         NPTH       5.78mm (0.23inch)
+----------------------------------------------------------------------------------------------------------------------------------
+Totals                                                                              200
+
+Total Processing Time (hh:mm:ss) : 00:00:00

@@ -1,0 +1,63 @@
+Altium Designer Pick and Place Locations
+C:\Users\FilipK\OneDrive - Vontier\Documents\APSS-Reference-PCBs\PSat\PSU\.\Fabrication Files\Pick Place\PSU-2.0.7-Pick Place.txt
+
+========================================================================================================================
+File Design Information:
+
+Date:       03/07/25
+Time:       19:23
+Revision:   0bcf92943ea9eba4431875f4d14186ce677b247b
+Variant:    No variations
+Units used: mil
+
+Designator Comment                            Layer       Footprint                Center-X(mil) Center-Y(mil) Rotation Description                                                                                                          
+C8         22uF                               TopLayer    CAPACITOR_0805_2012M-70N 622.558       1030.980      90       "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C10        22uF                               TopLayer    CAPACITOR_0805_2012M-70N 715.083       1320.408      270      "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+D1         "LTST-C190 Series"                 TopLayer    LED_0603_1608M_0.80MM    1577.737      270.957       270      "Diode - LED, 0603"                                                                                                  
+C1_3V3     22uF                               TopLayer    CAPACITOR_0805_2012M-70N 912.568       1405.183      90       "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C1_1V8     22uF                               TopLayer    CAPACITOR_0805_2012M-70N 1119.555      1755.046      90       "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C2_3V3     22uF                               TopLayer    CAPACITOR_0805_2012M-70N 1083.360      1198.557      0        "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C2_1V8     22uF                               TopLayer    CAPACITOR_0805_2012M-70N 1296.375      1551.319      0        "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C3_3V3     22uF                               TopLayer    CAPACITOR_0805_2012M-70N 1207.913      1209.556      90       "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C3_1V8     22uF                               TopLayer    CAPACITOR_0805_2012M-70N 1547.825      1717.611      270      "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C4_3V3     22pF                               TopLayer    CAPACITOR_0805_2012M-70N 925.829       1201.639      0        "Generic Capacitor"                                                                                                  
+C4_1V8     22pF                               TopLayer    CAPACITOR_0805_2012M-70N 1124.974      1547.910      0        "Generic Capacitor"                                                                                                  
+L1_3V3     DFE322520F-2R2M=P2                 TopLayer    INDC3225X200N            1217.454      1381.200      90       "2.2 uH Shielded Wirewound Inductor 3.3 A 40mOhm Max 1210 (3225 Metric)"                                             
+L1_1V8     DFE322520F-2R2M=P2                 TopLayer    INDC3225X200N            1427.530      1681.159      90       "2.2 uH Shielded Wirewound Inductor 3.3 A 40mOhm Max 1210 (3225 Metric)"                                             
+R1_1V8     200k                               TopLayer    RESISTOR_0805_2012M-50N  1293.096      1634.510      0        "Passive - Resistor Series, 0805, 0.5%, 10 - 1M, E24, 0.063W, 1/8W, ±25ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)"    
+R1_3V3     910k                               TopLayer    RESISTOR_0805_2012M-50N  1079.124      1288.649      0        "Passive - Resistor Series, 0805, 0.5%, 10 - 1M, E24, 0.063W, 1/8W, ±25ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)"    
+R2_3V3     200k                               TopLayer    RESISTOR_0805_2012M-50N  921.895       1288.427      0        "Passive - Resistor Series, 0805, 0.5%, 10 - 1M, E24, 0.063W, 1/8W, ±25ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)"    
+R2_1V8     100k                               TopLayer    RESISTOR_0805_2012M-50N  1121.040      1634.698      0        "Passive - Resistor Series, 0805, 0.5%, 10 - 1M, E24, 0.063W, 1/8W, ±25ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)"    
+U1_1V8     AP3445LW6-7                        TopLayer    SOT23-6N-1.4MM           1281.835      1743.739      180      "IC - Regulator, Buck, 2A, 2.7V to 5.5V In, 0.6V to Vin Out, SOT23-6"                                                
+U1_3V3     AP3445LW6-7                        TopLayer    SOT23-6N-1.4MM           1067.863      1397.878      180      "IC - Regulator, Buck, 2A, 2.7V to 5.5V In, 0.6V to Vin Out, SOT23-6"                                                
+R14        1.5k                               TopLayer    RESISTOR_0805_2012M-50N  688.743       2032.967      225      "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+H1         RS2BE-10-G-SMT                     TopLayer    RS2BE10GSMT              1473.504      1102.362      270      "Receptacle Strip 10P 2.54mm Pitch SMT"                                                                              
+R13        5.1k                               TopLayer    RESISTOR_0805_2012M-50N  895.051       122.207       75       "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+R12        5.1k                               TopLayer    RESISTOR_0805_2012M-50N  809.204       145.210       75       "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+R11        1Meg                               TopLayer    RESISTOR_0805_2012M-50N  978.240       822.416       0        "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+Q1         SSM3J328R,LF                       TopLayer    SOT23F-3-0.8MM           1222.959      862.047       90       "Transistor - MOSFET, P-Channel SSM3J328R,LF"                                                                        
+U3         RT4812GJ8F                         TopLayer    SOT28-8N-1.45mm          452.846       1112.392      270      "Boost Switching Regulator IC Positive Adjustable 1.8V 1 Output 2A SOT-23-8 Thin, TSOT-23-8"                         
+R10        100k                               TopLayer    RESISTOR_0805_2012M-50N  680.001       1188.793      180      "Passive - Resistor Series, 0805, 0.5%, 10 - 1M, E24, 0.063W, 1/8W, ±25ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)"    
+R9         910k                               TopLayer    RESISTOR_0805_2012M-50N  560.942       1226.620      90       "Passive - Resistor Series, 0805, 0.5%, 10 - 1M, E24, 0.063W, 1/8W, ±25ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)"    
+L2         SPM6530T-1R5M100                   TopLayer    IND_SPM6530T-1R5M100     451.636       858.268       90       "1.5 uH Shielded Drum Core, Wirewound Inductor 11 A 10.67mOhm Max Nonstandard"                                       
+C9         22uF                               TopLayer    CAPACITOR_0805_2012M-70N 416.473       1275.249      0        "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+C7         22uF                               TopLayer    CAPACITOR_0805_2012M-70N 353.603       662.756       0        "Passive - Capacitor, X5R, 22uF Max, 6.3V, 0805 (2012 Metric), ±20%, -55°C ~ 85°C. 8.8uF @ 5V"                       
+P2b        10118193-0001LF                    TopLayer    AMPHENOL_10118193-0001LF 1129.016      111.713       0        "Micro USB 2.0, Input Output Connectors, B TYPE RECEPTACLE"                                                          
+U2         BQ21040DBVR                        TopLayer    SOT95P280X145-6N         1267.775      626.074       180      "1-cell, 0.8-A Li-ion and Li-polymer battery charger"                                                                
+R8         1.5k                               TopLayer    RESISTOR_0805_2012M-50N  1675.621      275.882       90       "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+R7         10k                                TopLayer    RESISTOR_0805_2012M-50N  1319.216      468.476       90       "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+R6         560                                TopLayer    RESISTOR_0805_2012M-50N  1173.910      730.910       0        "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+P2a        USB4105-GF-A                       TopLayer    GCT_USB4105-GF-A         623.379       319.370       330      "USB-C (USB TYPE-C) USB 2.0 Receptacle Connector 24 (16+8 Dummy) Position Surface Mount, Right Angle; Through Hole"  
+C6         2.2uF                              TopLayer    CAPACITOR_0805_2012M-70N 1131.930      606.559       270      "Passive - Capacitor, X5R, 2.2uF Max, 10V, 0805 (2012 Metric), ±10%, -55°C ~ 85°C. 2uF @ 5V, 1.1uF @ 10V"            
+C5         2.2uF                              TopLayer    CAPACITOR_0805_2012M-70N 1415.965      467.445       90       "Passive - Capacitor, X5R, 2.2uF Max, 10V, 0805 (2012 Metric), ±10%, -55°C ~ 85°C. 2uF @ 5V, 1.1uF @ 10V"            
+S1         TDP04H1SBD1                        TopLayer    TDP04H1SBD1              507.833       1706.790      225      Switch                                                                                                               
+R5         1Meg                               TopLayer    RESISTOR_0805_2012M-50N  780.734       1933.325      315      "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+R4         1Meg                               TopLayer    RESISTOR_0805_2012M-50N  720.809       1870.850      315      "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+R3         1Meg                               TopLayer    RESISTOR_0805_2012M-50N  656.011       1807.125      315      "Passive - Resistor Series, 0805, 5%, 100m - 22M, E24, 0.063W, 1/16W, ±200ppm/°C, -55°C ~ 155°C, 0805 (2012 Metric)" 
+P1         B2B-PH-K-S(LF)(SN)                 TopLayer    JST_B2B-PH-K-S(LF)(SN)   2025.490      867.075       270      "Connector Header Through Hole 2 position 0.079 (2.00mm)"                                                            
+D2         SS0520_R1_00001                    TopLayer    SOD123-1.35MM-N          951.249       733.129       180      "Diode - Low Forward Voltage, Schottky, 385 mV @ 500 mA, 75 µA Reverse @ 10 V, SOD-123"                              
+D3         SS0520_R1_00001                    TopLayer    SOD123-1.35MM-N          1981.488      1031.485      0        "Diode - Low Forward Voltage, Schottky, 385 mV @ 500 mA, 75 µA Reverse @ 10 V, SOD-123"                              
+RBF        ""                                 TopLayer    ECE-600102STTH-RA        2063.332      1131.811      90       "Short Before Flight"                                                                                                
+SB1        "Solder Jumper Normally Open 0201" BottomLayer SOLDER_BRIDGE_OPEN_0201  526.764       1800.699      315      ""                                                                                                                   
+SB2        "Solder Jumper Normally Open 0201" BottomLayer SOLDER_BRIDGE_OPEN_0201  489.959       1763.893      315      ""                                                                                                                   
+SB3        "Solder Jumper Normally Open 0201" BottomLayer SOLDER_BRIDGE_OPEN_0201  453.155       1727.089      315      ""                                                                                                                   
